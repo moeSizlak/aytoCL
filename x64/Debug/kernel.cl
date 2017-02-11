@@ -6,6 +6,7 @@
 
 
 
+
 typedef struct Results {
 	ulong total;
 	ulong results[CARDINALITY][CARDINALITY];
