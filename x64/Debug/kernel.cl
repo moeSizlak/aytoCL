@@ -3,6 +3,9 @@
 #define FACTORIAL (39916800)
 
 
+
+
+
 typedef struct Results {
 	ulong total;
 	ulong results[CARDINALITY][CARDINALITY];
