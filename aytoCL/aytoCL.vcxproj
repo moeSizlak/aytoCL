@@ -158,9 +158,6 @@
     <ClInclude Include="ayto.h" />
     <ClInclude Include="season5.h" />
   </ItemGroup>
-  <ItemGroup>
-    <None Include="kernel.cl" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 8.0.targets" />
