@@ -159,7 +159,7 @@
     <ClInclude Include="season5.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="kernel.cl">
+    <None Include="..\x64\Debug\kernel.cl">
       <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</DeploymentContent>
     </None>
   </ItemGroup>
