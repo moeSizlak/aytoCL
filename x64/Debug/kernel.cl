@@ -1,11 +1,5 @@
-#pragma OPENCL EXTENSION cl_khr_byte_addressable_store : enable
 #define CARDINALITY (11)
 #define FACTORIAL (39916800)
-
-
-
-
-
 
 typedef struct Results {
 	ulong total;
@@ -44,128 +38,141 @@ void atomInc64 (__global uint *counter)
 	atomic_add (&counter [1], carry);
 }
 
-
-kernel void getResults(const AytoData_t a, global uint* results, local uint* local_array, const uint firstPass, global uint* lsize) {
-	
-    const size_t global_id = get_global_id(0);
-	const size_t local_id = get_local_id(0);
-	const size_t local_size = get_local_size(0);
-	const size_t group_id = get_group_id(0); 
-	
+int isValid(const AytoData_t* a, uint m)
+{
 	uchar permuted[CARDINALITY];
 	uchar elements[CARDINALITY];
 	
 	int index;
     int i, j;
-    int m;
     int valid;
     int correct;
-	
-	if(global_id == 0) {
-		lsize[0] = local_size;
+
+	for(i=0; i < CARDINALITY; ++i) {
+		elements[i] = i;
 	}
+		
+	// Antoine Cormeau's algorithm
+	for( i=0; i<CARDINALITY; ++i ) {
+		index = m % (CARDINALITY-i);
+		m = m / (CARDINALITY-i);
+		permuted[i] = elements[index];
+		elements[index] = elements[CARDINALITY-i-1];
+	}
+
+	while (1) {
+		valid = 1;
+		
+		for(i = 0; i < (*a).matchesLength; i++) {
+			if(permuted[(*a).leftMatches[i]] != (*a).rightMatches[i]) {
+				valid = 0;
+				break;
+			}
+		}
+		
+		if(!valid) {
+			break;
+		}
+		
+		for(i = 0; i < (*a).nonmatchesLength; i++) {
+			if(permuted[(*a).leftNonmatches[i]] == (*a).rightNonmatches[i]) {
+				valid = 0;
+				break;
+			}
+		}
+		
+		if(!valid) {
+			break;
+		}
+		
+		for(i = 0; i < (*a).ceremoniesLength; i++) {
+			correct = 0;
+			for(j = 0; j < CARDINALITY; j++) {
+				if(permuted[j] == (*a).ceremonies[i * CARDINALITY + j]) {
+					correct += 1;
+				}
+			}
+			
+			if(correct != (*a).lights[i]) {
+				valid = 0;
+				break;
+			}
+		}
+		
+		if(!valid) {
+			break;
+		}
+		
+		break;
+	}
+
+	return valid;
+}
+
+
+kernel void getResults(const AytoData_t a, const uint n, global uint* input, global uint* output, local uint* local_array, const uint firstPass) {
+	
+    const size_t global_id = get_global_id(0);
+	const size_t local_id = get_local_id(0);
+	const size_t local_size = get_local_size(0);
+	const size_t group_id = get_group_id(0); 
+	unsigned int i = group_id*(local_size*2) + local_id;
+		
 	
 	if(firstPass) {
 
-		m = global_id;
-
-		for(i=0; i < CARDINALITY; ++i) {
-			elements[i] = i;
-		}
-
-		//if(!(m&32767)) {
-		//if(global_id == 0) {
-		//printf("local_size=%d\n", local_size);
-	//}
-			
-		// Antoine Cormeau's algorithm
-		for( i=0; i<CARDINALITY; ++i ) {
-			index = m % (CARDINALITY-i);
-			m = m / (CARDINALITY-i);
-			permuted[i] = elements[index];
-			elements[index] = elements[CARDINALITY-i-1];
-		}
-
-		while (1) {/*
-			local_array [local_id] = 0;
-			barrier(CLK_LOCAL_MEM_FENCE); 
-			valid = 1;
-			
-			for(i = 0; i < a.matchesLength; i++) {
-				if(permuted[a.leftMatches[i]] != a.rightMatches[i]) {
-					valid = 0;
-					break;
-				}
-			}
-			
-			if(!valid) {
-				break;
-			}
-			
-			for(i = 0; i < a.nonmatchesLength; i++) {
-				if(permuted[a.leftNonmatches[i]] == a.rightNonmatches[i]) {
-					valid = 0;
-					break;
-				}
-			}
-			
-			if(!valid) {
-				break;
-			}
-			
-			for(i = 0; i < a.ceremoniesLength; i++) {
-				correct = 0;
-				for(j = 0; j < CARDINALITY; j++) {
-					if(permuted[j] == a.ceremonies[i * CARDINALITY + j]) {
-						correct += 1;
-					}
-				}
-				
-				if(correct != a.lights[i]) {
-					valid = 0;
-					break;
-				}
-			}
-			
-			if(!valid) {
-				break;
-			}
-			*/
-			local_array [local_id] = 1;
-			
-			break;
-		}
+		/*local_array[local_id] = (i < n) ? 1 : 0;
+		if (i + local_size < n) 
+			local_array[local_id] += 1;*/
+		
+		local_array[local_id] = (i < n) ? isValid(&a,i) : 0;
+		if (i + local_size < n) 
+			local_array[local_id] += isValid(&a,i+local_size);
+	
+		
 	} else {
-		local_array [local_id] = results [global_id];
+	
+		local_array[local_id] = (i < n) ? input[i] : 0;
+		if (i + local_size < n) 
+			local_array[local_id] += input[i+local_size];  
+			
 	}
 	
 	barrier(CLK_LOCAL_MEM_FENCE); 
 	
-	if(global_id == 0) {
+	/*if(global_id == 0) {
 		for(i = 0; i < local_size; i++) {
 			printf("%d,", local_array[i]);	
 		}
 		printf("\n\n");
 	}
-	barrier(CLK_LOCAL_MEM_FENCE);
-	for (i = 1; i < local_size; i = i * 2) { 
-		if ((local_id % (i * 2)) == 0) { 
-			local_array [local_id] = local_array [local_id] + local_array [local_id + i];
-		} 
-		barrier(CLK_LOCAL_MEM_FENCE);
-	}
-	barrier(CLK_LOCAL_MEM_FENCE);
+	barrier(CLK_LOCAL_MEM_FENCE);*/
+	
+	for(unsigned int s=local_size/2; s>0; s>>=1) 
+    {
+        if (local_id < s) 
+        {
+            local_array[local_id] += local_array[local_id + s];
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+	
+	
+	/*barrier(CLK_LOCAL_MEM_FENCE);
+	
 	if(global_id == 0) {
 		for(i = 0; i < local_size; i++) {
 			printf("%d,", local_array[i]);	
 		}
 		printf("\n\n");
-	}
+	}*/
+	
 	if (local_id == 0) {
 		//if(!(m&32767)) {
 		//printf("fp=%d, global_id=%d, local_array[0]=%d, local_size=%d\n", firstPass, global_id, local_array [local_id], local_size);
 	//}
-		results [group_id] = local_array [local_id];
+		output [group_id] = local_array [local_id];
 		//printf("a.nonmatchesLength=%d\n", local_array [local_id]);
 	}
 }

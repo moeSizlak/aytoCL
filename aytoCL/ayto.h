@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <locale.h>
 #include <inttypes.h>
-#include <pthread.h>
 
 
 #define NO_MATCH (0)
@@ -253,7 +252,7 @@ void* computeAytoData(Ayto_t* a, double episode) {
 	(*a).data.boNonmatchesLength = 0;
 	(*a).data.ceremoniesLength = 0;
 
-	if (episode <= 0) {
+	if (episode < 0) {
 		episode = 999999;
 	}
 
