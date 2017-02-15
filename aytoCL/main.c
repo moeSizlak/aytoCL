@@ -14,7 +14,7 @@
 #endif
 
 #define MAX_SOURCE_SIZE (0x100000)
-#define EPISODE (0.5)
+#define EPISODE (-1)
 #define CALC_BO_ODDS (0)
 
 
@@ -91,7 +91,6 @@ int main(void) {
 	}
 
 	cl_kernel getResults = clCreateKernel(program, "getResults", &ret);
-	cl_kernel writeChoices = clCreateKernel(program, "writeChoices", &ret);
 
 	Results_t r = { 0 };
 	time_t start, end;
@@ -127,7 +126,6 @@ int main(void) {
 
 	cl_mem output = clCreateBuffer(context, CL_MEM_READ_WRITE, array_size, NULL, &ret);
 	cl_mem input = clCreateBuffer(context, CL_MEM_READ_WRITE, array_size, NULL, &ret);
-	cl_mem lsize = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_uint), NULL, &ret);
 
 	size_t local_size[1], global_size[1];
 
@@ -191,11 +189,60 @@ int main(void) {
 	//ret = clReleaseContext(context);
 
 // **************************************************************************************************
+	start = clock();
 
+	maxThreads = 1024;
+	cl_uint workPerThread = 1;
+	cl_uint aci = 0;
+	cl_uint pci = 0;
+	n = fact;
 
+	cl_mem mem_ac = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_uchar) * CARDINALITY * FACTORIAL, NULL, &ret);
+	cl_mem mem_pc = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_uchar) * CARDINALITY * FACTORIAL, NULL, &ret);
+	cl_mem mem_aci = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_uint), NULL, &ret);
+	cl_mem mem_pci = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_uint), NULL, &ret);
 
+	cl_kernel writeChoices = clCreateKernel(program, "writeChoices", &ret);
 
+	ret = clSetKernelArg(writeChoices, 0, sizeof(AytoData_t), &(a.data));
+	ret = clSetKernelArg(writeChoices, 1, sizeof(cl_uint), &fact);
+	ret = clSetKernelArg(writeChoices, 2, sizeof(cl_mem), &mem_ac);
+	ret = clSetKernelArg(writeChoices, 3, sizeof(cl_mem), &mem_pc);
+	ret = clSetKernelArg(writeChoices, 4, maxThreads * workPerThread * sizeof(cl_uchar) * CARDINALITY, NULL); // lac
+	ret = clSetKernelArg(writeChoices, 5, maxThreads * workPerThread * sizeof(cl_uchar) * CARDINALITY, NULL); // lpc
+	ret = clSetKernelArg(writeChoices, 6, sizeof(cl_mem), &mem_aci);
+	ret = clSetKernelArg(writeChoices, 7, sizeof(cl_mem), &mem_pci);
+	ret = clSetKernelArg(writeChoices, 8, sizeof(cl_uint), &workPerThread);
 
+	clFinish(command_queue);
+
+	threads = (n < (maxThreads * workPerThread)) ? (n + workPerThread - 1)/workPerThread : maxThreads;
+	blocks = (n + (threads * workPerThread - 1)) / (threads * workPerThread);
+
+	global_size[0] = threads*blocks;
+	local_size[0] = threads;
+	printf("writeChoices: t=%u, b=%u, tbw=%u, n=%u\n", threads, blocks, threads*blocks*workPerThread, n);
+
+	ret = clEnqueueNDRangeKernel(command_queue, writeChoices, 1, NULL, global_size, local_size, 0, NULL, NULL);
+	if (ret != CL_SUCCESS) {
+		printf("ERROR!!! %d\n", ret);
+		exit(-1);
+	}
+
+	ret = clEnqueueReadBuffer(command_queue, k % 2 == 0 ? input : output, CL_TRUE, 0, sizeof(cl_uint), &sum, 0, NULL, NULL);
+	printf("ACTUAL CHOICES=%d\n", sum);
+	printf("PERCEIVED CHOICES=%d\n", sum);
+
+	end = clock();
+	printf("Time was: %d ms\n\n", (int)(1000 * (end - start) / CLOCKS_PER_SEC));
+
+	ret = clFlush(command_queue);
+	ret = clFinish(command_queue);
+	if (ret != CL_SUCCESS) {
+		printf("ERROR!!! %d\n", ret);
+		exit(-1);
+	}
+	ret = clReleaseKernel(writeChoices);
 
 
 

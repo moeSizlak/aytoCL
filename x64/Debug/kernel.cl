@@ -176,3 +176,82 @@ kernel void getResults(const AytoData_t a, const uint n, global uint* input, glo
 		//printf("a.nonmatchesLength=%d\n", local_array [local_id]);
 	}
 }
+
+
+kernel void writeChoices(const AytoData_t a, const uint n, global uchar* ac, global uchar* pc, local uchar* lac, local uchar* lpc, global uint* aci, glocal uint* pci, const uint workPerThread) {
+	
+    const size_t global_id = get_global_id(0);
+	const size_t local_id = get_local_id(0);
+	const size_t local_size = get_local_size(0);
+	const size_t group_id = get_group_id(0); 
+	
+	local uint laci;
+	local uint lpci;
+	
+	if (get_local_id (0) == 0) {
+		laci = 0;
+		lpci = 0;
+	}
+	barrier(CLK_LOCAL_MEM_FENCE);
+	
+	
+	
+		
+	
+	if(firstPass) {
+
+		/*local_array[local_id] = (i < n) ? 1 : 0;
+		if (i + local_size < n) 
+			local_array[local_id] += 1;*/
+		
+		local_array[local_id] = (i < n) ? isValid(&a,i) : 0;
+		if (i + local_size < n) 
+			local_array[local_id] += isValid(&a,i+local_size);
+	
+		
+	} else {
+	
+		local_array[local_id] = (i < n) ? input[i] : 0;
+		if (i + local_size < n) 
+			local_array[local_id] += input[i+local_size];  
+			
+	}
+	
+	barrier(CLK_LOCAL_MEM_FENCE); 
+	
+	/*if(global_id == 0) {
+		for(i = 0; i < local_size; i++) {
+			printf("%d,", local_array[i]);	
+		}
+		printf("\n\n");
+	}
+	barrier(CLK_LOCAL_MEM_FENCE);*/
+	
+	for(unsigned int s=local_size/2; s>0; s>>=1) 
+    {
+        if (local_id < s) 
+        {
+            local_array[local_id] += local_array[local_id + s];
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+	
+	
+	/*barrier(CLK_LOCAL_MEM_FENCE);
+	
+	if(global_id == 0) {
+		for(i = 0; i < local_size; i++) {
+			printf("%d,", local_array[i]);	
+		}
+		printf("\n\n");
+	}*/
+	
+	if (local_id == 0) {
+		//if(!(m&32767)) {
+		//printf("fp=%d, global_id=%d, local_array[0]=%d, local_size=%d\n", firstPass, global_id, local_array [local_id], local_size);
+	//}
+		output [group_id] = local_array [local_id];
+		//printf("a.nonmatchesLength=%d\n", local_array [local_id]);
+	}
+}
