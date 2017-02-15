@@ -196,6 +196,7 @@ kernel void writeChoices(const AytoData_t a, const uint n, global uchar* ac, glo
 	
 	
 	
+	
 		
 	
 	if(firstPass) {
