@@ -191,12 +191,14 @@ int main(void) {
 // **************************************************************************************************
 	start = clock();
 
-	maxThreads = 1024;
-	cl_uint workPerThread = 1;
+	maxThreads = 256;
+	cl_uint workPerThread = 8;
 	cl_uint aci = 0;
 	cl_uint pci = 0;
 	n = fact;
 
+	char *ac = malloc(sizeof(char) * CARDINALITY * FACTORIAL);
+	char *pc = malloc(sizeof(char) * CARDINALITY * FACTORIAL);
 	cl_mem mem_ac = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_uchar) * CARDINALITY * FACTORIAL, NULL, &ret);
 	cl_mem mem_pc = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_uchar) * CARDINALITY * FACTORIAL, NULL, &ret);
 	cl_mem mem_aci = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_uint), NULL, &ret);
@@ -221,20 +223,57 @@ int main(void) {
 
 	global_size[0] = threads*blocks;
 	local_size[0] = threads;
-	printf("writeChoices: t=%u, b=%u, tbw=%u, n=%u\n", threads, blocks, threads*blocks*workPerThread, n);
+	//printf("writeChoices: t=%u, b=%u, tbw=%u, n=%u\n", threads, blocks, threads*blocks*workPerThread, n);
 
 	ret = clEnqueueNDRangeKernel(command_queue, writeChoices, 1, NULL, global_size, local_size, 0, NULL, NULL);
 	if (ret != CL_SUCCESS) {
 		printf("ERROR!!! %d\n", ret);
 		exit(-1);
 	}
-
-	ret = clEnqueueReadBuffer(command_queue, k % 2 == 0 ? input : output, CL_TRUE, 0, sizeof(cl_uint), &sum, 0, NULL, NULL);
-	printf("ACTUAL CHOICES=%d\n", sum);
-	printf("PERCEIVED CHOICES=%d\n", sum);
-
 	end = clock();
 	printf("Time was: %d ms\n\n", (int)(1000 * (end - start) / CLOCKS_PER_SEC));
+
+	ret = clEnqueueReadBuffer(command_queue, mem_aci, CL_TRUE, 0, sizeof(cl_uint), &aci, 0, NULL, NULL);
+	ret = clEnqueueReadBuffer(command_queue, mem_pci, CL_TRUE, 0, sizeof(cl_uint), &pci, 0, NULL, NULL);
+	ret = clEnqueueReadBuffer(command_queue, mem_ac, CL_TRUE, 0, sizeof(cl_uchar) * CARDINALITY * aci, ac, 0, NULL, NULL);
+	ret = clEnqueueReadBuffer(command_queue, mem_pc, CL_TRUE, 0, sizeof(cl_uchar) * CARDINALITY * pci, pc, 0, NULL, NULL);
+	printf("ACTUAL CHOICES=%d\n", aci);
+	printf("PERCEIVED CHOICES=%d\n\n", pci);
+
+	int a[CARDINALITY][CARDINALITY] = { 0 };
+	int p[CARDINALITY][CARDINALITY] = { 0 };
+
+	for (i = 0; i < aci; i++) {
+		for (j = 0; j < CARDINALITY; j++) {
+			a[j][ac[CARDINALITY*i + j]]++;
+		}
+	}
+
+	for (i = 0; i < CARDINALITY; i++) {
+		for (j = 0; j < CARDINALITY; j++) {
+			printf("%5.1f ", (100.0*(double)a[j][i])/((double)aci));
+		}
+		printf("\n");
+	}
+
+	printf("\n\n\n");
+
+	for (i = 0; i < pci; i++) {
+		for (j = 0; j < CARDINALITY; j++) {
+			p[j][pc[CARDINALITY*i + j]]++;
+		}
+	}
+
+	for (i = 0; i < CARDINALITY; i++) {
+		for (j = 0; j < CARDINALITY; j++) {
+			printf("%5.1f ", (100.0*(double)p[j][i]) / ((double)pci));
+		}
+		printf("\n");
+	}
+
+	free(ac);
+	free(pc);
+
 
 	ret = clFlush(command_queue);
 	ret = clFinish(command_queue);

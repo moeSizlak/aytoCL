@@ -9,8 +9,8 @@
 char* guys[CARDINALITY] = { "Andre","Derrick","Edward","Hayden","Jaylan","Joey","Michael","Mike","Osvaldo","Ozzy","Tyler" };
 char* girls[CARDINALITY] = { "Alicia","Carolina","Casandra","Gianna","Hannah","Kam","Kari","Kathryn","Shannon","Taylor","Tyranny" };
 
-int numTruths = 4;
-int numCeremonies = 4;
+int numTruths = 5;
+int numCeremonies = 5;
 
 Truth_t t[] = {
 	{
@@ -32,6 +32,11 @@ Truth_t t[] = {
 		.pair = { "Osvaldo","Tyranny" },
 		.truth = NO_MATCH,
 		.episode = 3.5
+	},
+	{
+		.pair = { "Edward","Kam" },
+		.truth = PERFECT_MATCH,
+		.episode = 4.5
 	}
 };
 
@@ -105,6 +110,24 @@ Ceremony_t c[] = {
 
 .lights = 4,
 .episode = 4
+	},
+	{
+		.pairs = {
+			{ "Andre","Taylor" },
+			{ "Derrick","Tyranny" },
+			{ "Edward","Kam" },
+			{ "Hayden","Carolina" },
+			{ "Jaylan","Casandra" },
+			{ "Joey","Kathryn" },
+			{ "Michael","Kari" },
+			{ "Mike","Alicia" },
+			{ "Osvaldo","Gianna" },
+			{ "Ozzy","Hannah" },
+			{ "Tyler","Shannon" }
+},
+
+.lights = 4,
+.episode = 5
 	}
 };
 
