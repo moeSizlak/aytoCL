@@ -16,6 +16,8 @@
 #define MAX_SOURCE_SIZE (0x100000)
 #define EPISODE (-1)
 #define CALC_BO_ODDS (0)
+#define TRI_ROOT(X) ((floorSqrt((8*(X))+1)-1)>>1)
+#define TRI_NUM(X) (((X)*((X)+1))>>1)
 
 
 
@@ -48,6 +50,36 @@ unsigned int nextPow2(unsigned int x) {
 	x |= x >> 8;
 	x |= x >> 16;
 	return ++x;
+}
+
+// Returns floor of square root of x         
+cl_ulong floorSqrt(cl_ulong x)
+{
+	// Base cases
+	if (x == 0 || x == 1)
+		return x;
+
+	// Do Binary Search for floor(sqrt(x))
+	cl_ulong start = 1, end = x, ans;
+	while (start <= end)
+	{
+		cl_ulong mid = (start + end) >> 1;
+
+		// If x is a perfect square
+		if (mid*mid == x)
+			return mid;
+
+		// Since we need floor, we update answer when mid*mid is 
+		// smaller than x, and move closer to sqrt(x)
+		if (mid*mid < x)
+		{
+			start = mid + 1;
+			ans = mid;
+		}
+		else // If mid*mid is greater than x
+			end = mid - 1;
+	}
+	return ans;
 }
 
 int main(void) {
@@ -98,7 +130,7 @@ int main(void) {
 
 	start = clock();
 
-	int i, j;
+	unsigned int i, j;
 	for (i = 0; i < numTruths; i++) {
 		j = addTruth(&t[i], &a);
 		if (j != 0) {
@@ -118,12 +150,12 @@ int main(void) {
 	computeAytoData(&a, EPISODE);
 
 	cl_int sum = 0;
-	int maxThreads = 1024;
+	unsigned int maxThreads = 1024;
 	size_t array_size = ((sizeof(cl_uint) * FACTORIAL) + (maxThreads * 2 - 1)) / (maxThreads * 2);
 	cl_uint fact = FACTORIAL;
 	
-	int threads;
-	int blocks;
+	unsigned int threads;
+	unsigned int blocks;
 
 	cl_mem output = clCreateBuffer(context, CL_MEM_READ_WRITE, array_size, NULL, &ret);
 	cl_mem input = clCreateBuffer(context, CL_MEM_READ_WRITE, array_size, NULL, &ret);
@@ -138,7 +170,7 @@ int main(void) {
 	ret = clSetKernelArg(getResults, 4, sizeof(cl_uint)*maxThreads, NULL);
 	ret = clSetKernelArg(getResults, 5, sizeof(cl_uint), &firstPass);
 
-	int n = FACTORIAL;
+	unsigned int n = FACTORIAL;
 	int k = 1;
 	while (n > 1) {
 		clFinish(command_queue);
@@ -288,27 +320,23 @@ int main(void) {
 	start = clock();
 
 	cl_ulong abon = 0;
-	cl_ulong abod = 0;
+	cl_ulong abod = aci;
 	cl_ulong pbon = 0;
 	cl_ulong pbod = 0;
-	cl_ulong temp[4];
+	BlackoutData_t temp;
 
-	cl_ulong nn = aci*(aci+pci); // (11!)^2
+	cl_ulong stage1 = TRI_NUM(aci - 1);
+	cl_ulong nn = stage1 + (aci*pci);   //aci*(aci+pci); // (11!)^2
 	maxThreads = 1024;  // 1024
-	cl_long max_memory_allocation = 1000000000; // 1,000,000,000
-	cl_ulong chunkSize = (max_memory_allocation * maxThreads * 2)/(sizeof(cl_ulong) * 4);  // 64,000,000,000
+	cl_ulong max_memory_allocation = 1000000000; // 1,000,000,000
+	cl_ulong chunkSize = (max_memory_allocation * maxThreads * 2)/(sizeof(BlackoutData_t));  // 64,000,000,000
 	cl_ulong numChunks = nn + (chunkSize - 1) / chunkSize; // 24,896
-	cl_long chunkStart = 0;
-	cl_long chunkEnd = chunkStart + chunkSize;
-	cl_long chunkIndex = 0;
-	array_size = ((sizeof(cl_ulong) * 4 * chunkSize) + (maxThreads * 2 - 1)) / (maxThreads * 2); // 1,000,000,000
+	array_size = ((sizeof(BlackoutData_t) * chunkSize) + (maxThreads * 2 - 1)) / (maxThreads * 2); // 1,000,000,000
 
-	cl_mem output = clCreateBuffer(context, CL_MEM_READ_WRITE, array_size, NULL, &ret);
-	cl_mem input = clCreateBuffer(context, CL_MEM_READ_WRITE, array_size, NULL, &ret);
+	output = clCreateBuffer(context, CL_MEM_READ_WRITE, array_size, NULL, &ret);
+	input = clCreateBuffer(context, CL_MEM_READ_WRITE, array_size, NULL, &ret);
 
 	cl_kernel countBlackouts = clCreateKernel(program, "countBlackouts", &ret);
-
-	size_t local_size[1], global_size[1];
 
 	// these arguments remian the same throughout:
 	ret = clSetKernelArg(countBlackouts, 0, sizeof(AytoData_t), &(a.data));
@@ -316,25 +344,26 @@ int main(void) {
 	ret = clSetKernelArg(countBlackouts, 4, sizeof(cl_mem), &mem_pc);
 	ret = clSetKernelArg(countBlackouts, 5, sizeof(cl_mem), &mem_aci);
 	ret = clSetKernelArg(countBlackouts, 6, sizeof(cl_mem), &mem_pci);
-	ret = clSetKernelArg(countBlackouts, 9, sizeof(cl_long)*4*maxThreads, NULL);
+	ret = clSetKernelArg(countBlackouts, 9, sizeof(BlackoutData_t)*maxThreads, NULL);
+	ret = clSetKernelArg(countBlackouts, 11, sizeof(cl_ulong), &stage1);
 
+	cl_ulong chunkStart = 0;
+	cl_ulong chunkEnd = nn < chunkSize ? nn : chunkSize;
+	cl_ulong chunkIndex = 0;
 	while (chunkIndex < numChunks) {
 		
 		firstPass = 1;		
-		ret = clSetKernelArg(countBlackouts, 1, sizeof(cl_ulong), &chunkStart);
-		ret = clSetKernelArg(countBlackouts, 2, sizeof(cl_ulong), &chunkEnd);		
-		ret = clSetKernelArg(countBlackouts, 7, sizeof(cl_mem), &input);
-		ret = clSetKernelArg(countBlackouts, 8, sizeof(cl_mem), &output);		
+		ret = clSetKernelArg(countBlackouts, 1, sizeof(cl_ulong), &chunkStart);		
 		ret = clSetKernelArg(countBlackouts, 10, sizeof(cl_uint), &firstPass);
 
-		int n = chunkSize;
+		cl_ulong n = chunkStart - chunkEnd;
 		int k = 1;
 		while (n > 1) {
 			clFinish(command_queue);
 
-			threads = (n < maxThreads * 2) ? nextPow2((n + 1) / 2) : maxThreads;
-			blocks = (n + (threads * 2 - 1)) / (threads * 2);
-			ret = clSetKernelArg(countBlackouts, 1, sizeof(cl_uint), &n);
+			cl_ulong threads = (n < maxThreads * 2) ? nextPow2((n + 1) / 2) : maxThreads;
+			cl_ulong blocks = (n + (threads * 2 - 1)) / (threads * 2);
+			ret = clSetKernelArg(countBlackouts, 2, sizeof(cl_ulong), &n);
 			ret = clSetKernelArg(countBlackouts, 7, sizeof(cl_mem), k % 2 == 0 ? &input : &output);
 			ret = clSetKernelArg(countBlackouts, 8, sizeof(cl_mem), k % 2 != 0 ? &input : &output);
 
@@ -357,14 +386,16 @@ int main(void) {
 			k++;
 		}
 
-		ret = clEnqueueReadBuffer(command_queue, k % 2 == 0 ? input : output, CL_TRUE, 0, sizeof(cl_ulong) * 4, temp, 0, NULL, NULL);
-		abon += temp[0];
-		abod += temp[1];
-		pbon += temp[2];
-		pbod += temp[3];
+		ret = clEnqueueReadBuffer(command_queue, k % 2 == 0 ? input : output, CL_TRUE, 0, sizeof(BlackoutData_t), &temp, 0, NULL, NULL);
+		abon += temp.abon;
+		abod += temp.abod;
+		pbon += temp.pbon;
+		pbod += temp.pbod;
+		printf("CHUNK #%llud of %llud: abon=%llud, abod=%llud, abo=%3.5f, pbon=%llud, pbod=%llud, pbo=%3.f\n", chunkIndex, numChunks, abon, abod, (double)abon/(double)abod, pbon, pbod, (double)pbon/(double)pbod);
 
-
-		printf("CHUNK #%6d of %6d: abon=%lu, abod=%lu, abo=%3.5f, pbon=%lu, pbod=%lu, pbo=%3.f\n", chunkIndex, numChunks, abon, abod, (double)abon/(double)abod, pbon, pbod, (double)pbon/(double)pbod);
+		chunkStart = chunkEnd;
+		chunkEnd = nn < (chunkStart + chunkSize) ? nn : (chunkStart + chunkSize);
+		chunkIndex++;
 	}
 
 

@@ -9,8 +9,8 @@
 char* guys[CARDINALITY] = { "Andre","Derrick","Edward","Hayden","Jaylan","Joey","Michael","Mike","Osvaldo","Ozzy","Tyler" };
 char* girls[CARDINALITY] = { "Alicia","Carolina","Casandra","Gianna","Hannah","Kam","Kari","Kathryn","Shannon","Taylor","Tyranny" };
 
-int numTruths = 5;
-int numCeremonies = 5;
+unsigned int numTruths = 5;
+unsigned int numCeremonies = 5;
 
 Truth_t t[] = {
 	{

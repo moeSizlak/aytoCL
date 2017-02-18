@@ -1,6 +1,7 @@
 #define CARDINALITY (11)
 #define FACTORIAL (39916800)
-#define TRI_ROOT (X) ((sqrt((8*(X))+1)-1)/2)
+#define TRI_ROOT(X) ((floorSqrt((8*(X))+1)-1)>>1)
+#define TRI_NUM(X) (((X)*((X)+1))>>1) 
 
 typedef struct Results {
 	ulong total;
@@ -28,6 +29,13 @@ typedef struct AytoData {
 	uchar ceremoniesLength;	
 } AytoData_t;
 
+typedef struct BlackoutData {
+	ulong abon;
+	ulong abod;
+	ulong pbon;
+	ulong pbod;
+} BlackoutData_t;
+
 
 
 void atomInc64 (__global uint *counter)
@@ -37,6 +45,36 @@ void atomInc64 (__global uint *counter)
 	old = atomic_inc (&counter [0]);
 	carry = old == 0xFFFFFFFF;
 	atomic_add (&counter [1], carry);
+}
+
+// Returns floor of square root of x         
+ulong floorSqrt(ulong x) 
+{    
+    // Base cases
+    if (x == 0 || x == 1) 
+       return x;
+ 
+    // Do Binary Search for floor(sqrt(x))
+    ulong start = 1, end = x, ans;   
+    while (start <= end) 
+    {        
+        ulong mid = (start + end) >> 1;
+ 
+        // If x is a perfect square
+        if (mid*mid == x)
+            return mid;
+ 
+        // Since we need floor, we update answer when mid*mid is 
+        // smaller than x, and move closer to sqrt(x)
+        if (mid*mid < x) 
+        {
+            start = mid + 1;
+            ans = mid;
+        } 
+        else // If mid*mid is greater than x
+            end = mid - 1;        
+    }
+    return ans;
 }
 
 int isValid(const AytoData_t* a, uint m)
@@ -304,7 +342,7 @@ kernel void writeChoices(const AytoData_t a, const uint n, global uchar* ac, glo
 	}	
 }
 
-int isBlackout(const AytoData_t* a, uchar* x, uchar* y) {	
+int isBlackout(const AytoData_t* a, global uchar* x, global uchar* y) {	
 	int bo = 1;
 	int i,j,z;
 	
@@ -332,25 +370,24 @@ int isBlackout(const AytoData_t* a, uchar* x, uchar* y) {
 kernel void countBlackouts(
 	const AytoData_t a, 
 	const ulong chunkStart, 
-	const ulong chunkEnd, 
+	const ulong n, 
 	global uchar* ac, 
 	global uchar* pc, 
 	const uint aci, 
 	const uint pci, 
-	global ulong* abon, 
-	global ulong* abod, 
-	global ulong* pbon, 
-	global ulong* pbod, 
-	global ulong* input, 
-	global ulong* output, 
-	local ulong* local_array,
-	const uint firstPass) {
+	global BlackoutData_t* input, 
+	global BlackoutData_t* output, 
+	local BlackoutData_t* local_array,
+	const uint firstPass,
+	const ulong stage1) {
 	
 	const size_t global_id = get_global_id(0);
 	const size_t local_id = get_local_id(0);
 	const size_t local_size = get_local_size(0);
 	const size_t group_id = get_group_id(0);
 	unsigned int i = group_id*(local_size*2) + local_id;
+	ulong ii = i + chunkStart;
+	ulong nn = n + chunkStart;
 	
 	if(firstPass) {
 
@@ -358,16 +395,89 @@ kernel void countBlackouts(
 		if (i + local_size < n) 
 			local_array[local_id] += 1;*/
 		
-		local_array[local_id] = (i < n) ? isValid(&a,i) : 0;
-		if (i + local_size < n) 
-			local_array[local_id] += isValid(&a,i+local_size);
-	
+		ulong x1,y1, x2,y2;
+		global uchar* ax1;
+		global uchar* ay1;
+		global uchar* ax2;
+		global uchar* ay2;
+		uint isStage1_1, isStage1_2;
+		uint temp;
 		
-	} else {
+		if(ii < stage1) {
+			isStage1_1 = 1;
+			x1 = TRI_ROOT(ii);
+			y1 = ii - TRI_NUM(x1);
+			x1++;
+			ax1 = &ac[x1 * CARDINALITY];
+			ay1 = &ac[y1 * CARDINALITY];
+		} else {
+			isStage1_1 = 0;
+			ax1 = &ac[((ii - stage1) % aci) * CARDINALITY];
+			ay1 = &pc[((ii - stage1) / aci) * CARDINALITY];	
+		}
+		
+		if((ii + local_size) < stage1) {
+			isStage1_2 = 1;
+			x2 = TRI_ROOT(ii + local_size);
+			y2 = (ii + local_size) - TRI_NUM(x2);
+			x2++;
+			ax2 = &ac[x2 * CARDINALITY];
+			ay2 = &ac[y2 * CARDINALITY];
+		} else {
+			isStage1_2 = 0;
+			ax2 = &ac[(((ii + local_size) - stage1) % aci) * CARDINALITY];
+			ay2 = &pc[(((ii + local_size) - stage1) / aci) * CARDINALITY];	
+		}
+		
+		if(i < n) {
+			temp = isBlackout(&a, ax1, ay1) << isStage1_1;
+			
+			local_array[local_id].pbon = temp;
+			local_array[local_id].pbod = 1 << isStage1_1;
+			
+			if(isStage1_1) {
+				local_array[local_id].abon = temp;
+				local_array[local_id].abod = 2; //1 << isStage1_1;
+			}
+		} else {
+			local_array[local_id].pbon = 0;
+			local_array[local_id].pbod = 0;
+			local_array[local_id].abon = 0;
+			local_array[local_id].abod = 0;
+		}
+		
+		if(i + local_size < n) {
+			temp = isBlackout(&a, ax2, ay2) << isStage1_2;
+			
+			local_array[local_id].pbon += temp;
+			local_array[local_id].pbod += 1 << isStage1_2;
+			
+			if(isStage1_2) {
+				local_array[local_id].abon += temp;
+				local_array[local_id].abod += 2; //1 << isStage1_2;
+			}
+		}
+		
+	} else { // Not first pass
 	
-		local_array[local_id] = (i < n) ? input[i] : 0;
-		if (i + local_size < n) 
-			local_array[local_id] += input[i+local_size];  
+		if(i < n) {
+			local_array[local_id].abon = input[i].abon;
+			local_array[local_id].abod = input[i].abod;
+			local_array[local_id].pbon = input[i].pbon;
+			local_array[local_id].pbod = input[i].pbod;			
+		} else {
+			local_array[local_id].abon = 0;
+			local_array[local_id].abod = 0;
+			local_array[local_id].pbon = 0;
+			local_array[local_id].pbod = 0;	
+		}
+		
+		if (i + local_size < n) {
+			local_array[local_id].abon += input[i+local_size].abon; 
+			local_array[local_id].abod += input[i+local_size].abod;
+			local_array[local_id].pbon += input[i+local_size].pbon;
+			local_array[local_id].pbod += input[i+local_size].pbod;
+		}
 			
 	}
 	
@@ -385,7 +495,10 @@ kernel void countBlackouts(
     {
         if (local_id < s) 
         {
-            local_array[local_id] += local_array[local_id + s];
+            local_array[local_id].abon += local_array[local_id + s].abon;
+			local_array[local_id].abod += local_array[local_id + s].abod;
+			local_array[local_id].pbon += local_array[local_id + s].pbon;
+			local_array[local_id].pbod += local_array[local_id + s].pbod;
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
@@ -405,7 +518,10 @@ kernel void countBlackouts(
 		//if(!(m&32767)) {
 		//printf("fp=%d, global_id=%d, local_array[0]=%d, local_size=%d\n", firstPass, global_id, local_array [local_id], local_size);
 	//}
-		output [group_id] = local_array [local_id];
+		output[group_id].abon = local_array [local_id].abon;
+		output[group_id].abod = local_array [local_id].abod;
+		output[group_id].pbon = local_array [local_id].pbon;
+		output[group_id].pbod = local_array [local_id].pbod;
 		//printf("a.nonmatchesLength=%d\n", local_array [local_id]);
 	}
 	

@@ -7,6 +7,11 @@
 #include <locale.h>
 #include <inttypes.h>
 
+#ifdef __APPLE__
+#include <OpenCL/opencl.h>
+#else
+#include <CL/cl.h>
+#endif
 
 #define NO_MATCH (0)
 #define PERFECT_MATCH (1)
@@ -78,6 +83,15 @@ typedef struct AytoArg {
 	Results_t* r;
 	int calculateBlackoutOdds;
 } AytoArg_t;
+
+
+typedef struct BlackoutData {
+	cl_ulong abon;
+	cl_ulong abod;
+	cl_ulong pbon;
+	cl_ulong pbod;
+} BlackoutData_t;
+
 
 
 int nameToInt(char* name, char** nameArray) {
@@ -246,7 +260,7 @@ uint64_t factorial(int n) {
 	return x;
 }
 
-void* computeAytoData(Ayto_t* a, double episode) {
+void computeAytoData(Ayto_t* a, double episode) {
 	(*a).data.matchesLength = 0;
 	(*a).data.nonmatchesLength = 0;
 	(*a).data.boNonmatchesLength = 0;
