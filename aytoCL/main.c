@@ -18,6 +18,7 @@
 #define CALC_BO_ODDS (0)
 
 
+
 #define CL_CHECK(_expr)                                                         \
    do {                                                                         \
      cl_int _err = _expr;                                                       \
@@ -134,7 +135,7 @@ int main(void) {
 	ret = clSetKernelArg(getResults, 1, sizeof(cl_uint), &fact);
 	ret = clSetKernelArg(getResults, 2, sizeof(cl_mem), &input);
 	ret = clSetKernelArg(getResults, 3, sizeof(cl_mem), &output);
-	ret = clSetKernelArg(getResults, 4, sizeof(cl_uint)*1024, NULL);
+	ret = clSetKernelArg(getResults, 4, sizeof(cl_uint)*maxThreads, NULL);
 	ret = clSetKernelArg(getResults, 5, sizeof(cl_uint), &firstPass);
 
 	int n = FACTORIAL;
@@ -188,7 +189,7 @@ int main(void) {
 	//ret = clReleaseCommandQueue(command_queue);
 	//ret = clReleaseContext(context);
 
-// **************************************************************************************************
+// **************************** writeChoices **********************************************************
 	start = clock();
 
 	maxThreads = 256;
@@ -201,8 +202,8 @@ int main(void) {
 	char *pc = malloc(sizeof(char) * CARDINALITY * FACTORIAL);
 	cl_mem mem_ac = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_uchar) * CARDINALITY * FACTORIAL, NULL, &ret);
 	cl_mem mem_pc = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_uchar) * CARDINALITY * FACTORIAL, NULL, &ret);
-	cl_mem mem_aci = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_uint), NULL, &ret);
-	cl_mem mem_pci = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_uint), NULL, &ret);
+	cl_mem mem_aci = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(cl_uint), &aci, &ret);
+	cl_mem mem_pci = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(cl_uint), &pci, &ret);
 
 	cl_kernel writeChoices = clCreateKernel(program, "writeChoices", &ret);
 
@@ -240,18 +241,18 @@ int main(void) {
 	printf("ACTUAL CHOICES=%d\n", aci);
 	printf("PERCEIVED CHOICES=%d\n\n", pci);
 
-	int a[CARDINALITY][CARDINALITY] = { 0 };
+	int aa[CARDINALITY][CARDINALITY] = { 0 };
 	int p[CARDINALITY][CARDINALITY] = { 0 };
 
 	for (i = 0; i < aci; i++) {
 		for (j = 0; j < CARDINALITY; j++) {
-			a[j][ac[CARDINALITY*i + j]]++;
+			aa[j][ac[CARDINALITY*i + j]]++;
 		}
 	}
 
 	for (i = 0; i < CARDINALITY; i++) {
 		for (j = 0; j < CARDINALITY; j++) {
-			printf("%5.1f ", (100.0*(double)a[j][i])/((double)aci));
+			printf("%5.1f ", (100.0*(double)aa[j][i])/((double)aci));
 		}
 		printf("\n");
 	}
@@ -282,6 +283,111 @@ int main(void) {
 		exit(-1);
 	}
 	ret = clReleaseKernel(writeChoices);
+
+// ********************************** countBlackouts **************************************************
+	start = clock();
+
+	cl_ulong abon = 0;
+	cl_ulong abod = 0;
+	cl_ulong pbon = 0;
+	cl_ulong pbod = 0;
+	cl_ulong temp[4];
+
+	cl_ulong nn = aci*(aci+pci); // (11!)^2
+	maxThreads = 1024;  // 1024
+	cl_long max_memory_allocation = 1000000000; // 1,000,000,000
+	cl_ulong chunkSize = (max_memory_allocation * maxThreads * 2)/(sizeof(cl_ulong) * 4);  // 64,000,000,000
+	cl_ulong numChunks = nn + (chunkSize - 1) / chunkSize; // 24,896
+	cl_long chunkStart = 0;
+	cl_long chunkEnd = chunkStart + chunkSize;
+	cl_long chunkIndex = 0;
+	array_size = ((sizeof(cl_ulong) * 4 * chunkSize) + (maxThreads * 2 - 1)) / (maxThreads * 2); // 1,000,000,000
+
+	cl_mem output = clCreateBuffer(context, CL_MEM_READ_WRITE, array_size, NULL, &ret);
+	cl_mem input = clCreateBuffer(context, CL_MEM_READ_WRITE, array_size, NULL, &ret);
+
+	cl_kernel countBlackouts = clCreateKernel(program, "countBlackouts", &ret);
+
+	size_t local_size[1], global_size[1];
+
+	// these arguments remian the same throughout:
+	ret = clSetKernelArg(countBlackouts, 0, sizeof(AytoData_t), &(a.data));
+	ret = clSetKernelArg(countBlackouts, 3, sizeof(cl_mem), &mem_ac);
+	ret = clSetKernelArg(countBlackouts, 4, sizeof(cl_mem), &mem_pc);
+	ret = clSetKernelArg(countBlackouts, 5, sizeof(cl_mem), &mem_aci);
+	ret = clSetKernelArg(countBlackouts, 6, sizeof(cl_mem), &mem_pci);
+	ret = clSetKernelArg(countBlackouts, 9, sizeof(cl_long)*4*maxThreads, NULL);
+
+	while (chunkIndex < numChunks) {
+		
+		firstPass = 1;		
+		ret = clSetKernelArg(countBlackouts, 1, sizeof(cl_ulong), &chunkStart);
+		ret = clSetKernelArg(countBlackouts, 2, sizeof(cl_ulong), &chunkEnd);		
+		ret = clSetKernelArg(countBlackouts, 7, sizeof(cl_mem), &input);
+		ret = clSetKernelArg(countBlackouts, 8, sizeof(cl_mem), &output);		
+		ret = clSetKernelArg(countBlackouts, 10, sizeof(cl_uint), &firstPass);
+
+		int n = chunkSize;
+		int k = 1;
+		while (n > 1) {
+			clFinish(command_queue);
+
+			threads = (n < maxThreads * 2) ? nextPow2((n + 1) / 2) : maxThreads;
+			blocks = (n + (threads * 2 - 1)) / (threads * 2);
+			ret = clSetKernelArg(countBlackouts, 1, sizeof(cl_uint), &n);
+			ret = clSetKernelArg(countBlackouts, 7, sizeof(cl_mem), k % 2 == 0 ? &input : &output);
+			ret = clSetKernelArg(countBlackouts, 8, sizeof(cl_mem), k % 2 != 0 ? &input : &output);
+
+			global_size[0] = threads*blocks;
+			local_size[0] = threads;
+			//printf("t=%u, b=%u, tb2=%u, n=%u\n", threads, blocks, threads*blocks*2, n);
+
+			ret = clEnqueueNDRangeKernel(command_queue, getResults, 1, NULL, global_size, local_size, 0, NULL, NULL);
+			if (ret != CL_SUCCESS) {
+				printf("ERROR!!! %d\n", ret);
+				exit(-1);
+			}
+
+			if (firstPass) {
+				firstPass = 0;
+				ret = clSetKernelArg(getResults, 10, sizeof(cl_uint), &firstPass);
+				k = -1;
+			}
+			n = (n + (threads * 2 - 1)) / (threads * 2);
+			k++;
+		}
+
+		ret = clEnqueueReadBuffer(command_queue, k % 2 == 0 ? input : output, CL_TRUE, 0, sizeof(cl_ulong) * 4, temp, 0, NULL, NULL);
+		abon += temp[0];
+		abod += temp[1];
+		pbon += temp[2];
+		pbod += temp[3];
+
+
+		printf("CHUNK #%6d of %6d: abon=%lu, abod=%lu, abo=%3.5f, pbon=%lu, pbod=%lu, pbo=%3.f\n", chunkIndex, numChunks, abon, abod, (double)abon/(double)abod, pbon, pbod, (double)pbon/(double)pbod);
+	}
+
+
+
+	end = clock();
+
+	//printResults(&a, &r);
+	printf("Time was: %d ms\n\n", (int)(1000 * (end - start) / CLOCKS_PER_SEC));
+
+	ret = clFlush(command_queue);
+	ret = clFinish(command_queue);
+	if (ret != CL_SUCCESS) {
+		printf("ERROR!!! %d\n", ret);
+		exit(-1);
+	}
+	ret = clReleaseKernel(countBlackouts);
+	ret = clReleaseProgram(program);
+	ret = clReleaseMemObject(mem_ac);
+	ret = clReleaseMemObject(mem_pc);
+	ret = clReleaseMemObject(mem_aci);
+	ret = clReleaseMemObject(mem_pci);
+	ret = clReleaseCommandQueue(command_queue);
+	ret = clReleaseContext(context);
 
 
 
