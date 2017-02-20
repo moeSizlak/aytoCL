@@ -368,18 +368,18 @@ int isBlackout(const AytoData_t* a, global uchar* x, global uchar* y) {
 
 
 kernel void countBlackouts(
-	const AytoData_t a, 
-	const ulong chunkStart, 
-	const ulong n, 
-	global uchar* ac, 
-	global uchar* pc, 
-	const uint aci, 
-	const uint pci, 
-	global BlackoutData_t* input, 
-	global BlackoutData_t* output, 
-	local BlackoutData_t* local_array,
-	const uint firstPass,
-	const ulong stage1) {
+	const AytoData_t a,   					//0
+	const ulong chunkStart, 				//1
+	const ulong n, 							//2
+	global uchar* ac, 						//3
+	global uchar* pc, 						//4
+	const uint aci, 						//5
+	const uint pci, 						//6
+	global BlackoutData_t* input, 			//7
+	global BlackoutData_t* output, 			//8
+	local BlackoutData_t* local_array,		//9
+	const uint firstPass,					//10
+	const ulong stage1) {					//11
 	
 	const size_t global_id = get_global_id(0);
 	const size_t local_id = get_local_id(0);
@@ -391,11 +391,30 @@ kernel void countBlackouts(
 	
 	if(firstPass) {
 
-		/*local_array[local_id] = (i < n) ? 1 : 0;
-		if (i + local_size < n) 
-			local_array[local_id] += 1;*/
+		//local_array[local_id] = (i < n) ? 1 : 0;
+		//if (i + local_size < n) 
+		//	local_array[local_id] += 1;
 		
-		ulong x1,y1, x2,y2;
+		if(i < n) {			
+			local_array[local_id].pbon = 1;
+			local_array[local_id].pbod = 1;
+			local_array[local_id].abon = 1;
+			local_array[local_id].abod = 1;
+		} else {
+			local_array[local_id].pbon = 0;
+			local_array[local_id].pbod = 0;
+			local_array[local_id].abon = 0;
+			local_array[local_id].abod = 0;
+		}
+		
+		if(i + local_size < n) {			
+			local_array[local_id].pbon += 1;
+			local_array[local_id].pbod += 1;
+			local_array[local_id].abon += 1;
+			local_array[local_id].abod += 1;
+		}
+		
+		/*ulong x1,y1, x2,y2;
 		global uchar* ax1;
 		global uchar* ay1;
 		global uchar* ax2;
@@ -456,7 +475,7 @@ kernel void countBlackouts(
 				local_array[local_id].abon += temp;
 				local_array[local_id].abod += 2; //1 << isStage1_2;
 			}
-		}
+		}*/
 		
 	} else { // Not first pass
 	

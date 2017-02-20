@@ -330,7 +330,7 @@ int main(void) {
 	maxThreads = 1024;  // 1024
 	cl_ulong max_memory_allocation = 1000000000; // 1,000,000,000
 	cl_ulong chunkSize = (max_memory_allocation * maxThreads * 2)/(sizeof(BlackoutData_t));  // 64,000,000,000
-	cl_ulong numChunks = nn + (chunkSize - 1) / chunkSize; // 24,896
+	cl_ulong numChunks = (nn + (chunkSize - 1)) / chunkSize; // 24,896
 	array_size = ((sizeof(BlackoutData_t) * chunkSize) + (maxThreads * 2 - 1)) / (maxThreads * 2); // 1,000,000,000
 
 	output = clCreateBuffer(context, CL_MEM_READ_WRITE, array_size, NULL, &ret);
@@ -342,21 +342,24 @@ int main(void) {
 	ret = clSetKernelArg(countBlackouts, 0, sizeof(AytoData_t), &(a.data));
 	ret = clSetKernelArg(countBlackouts, 3, sizeof(cl_mem), &mem_ac);
 	ret = clSetKernelArg(countBlackouts, 4, sizeof(cl_mem), &mem_pc);
-	ret = clSetKernelArg(countBlackouts, 5, sizeof(cl_mem), &mem_aci);
-	ret = clSetKernelArg(countBlackouts, 6, sizeof(cl_mem), &mem_pci);
+	ret = clSetKernelArg(countBlackouts, 5, sizeof(cl_uint), &aci);
+	ret = clSetKernelArg(countBlackouts, 6, sizeof(cl_uint), &pci);
 	ret = clSetKernelArg(countBlackouts, 9, sizeof(BlackoutData_t)*maxThreads, NULL);
 	ret = clSetKernelArg(countBlackouts, 11, sizeof(cl_ulong), &stage1);
 
 	cl_ulong chunkStart = 0;
 	cl_ulong chunkEnd = nn < chunkSize ? nn : chunkSize;
 	cl_ulong chunkIndex = 0;
+
+	printf("countBlackouts INITIAL nn=%llu, chunkSize=%llu, numChunks=%llu, chunkIndex=%llu, chunkStart=%llu, chunkEnd=%llu, stage1=%llu, aci=%u, pci=%u\n", nn, chunkSize, numChunks, chunkIndex, chunkStart, chunkEnd, stage1, aci, pci);
+
 	while (chunkIndex < numChunks) {
 		
 		firstPass = 1;		
 		ret = clSetKernelArg(countBlackouts, 1, sizeof(cl_ulong), &chunkStart);		
 		ret = clSetKernelArg(countBlackouts, 10, sizeof(cl_uint), &firstPass);
 
-		cl_ulong n = chunkStart - chunkEnd;
+		cl_ulong n = chunkEnd - chunkStart;
 		int k = 1;
 		while (n > 1) {
 			clFinish(command_queue);
@@ -369,18 +372,20 @@ int main(void) {
 
 			global_size[0] = threads*blocks;
 			local_size[0] = threads;
-			//printf("t=%u, b=%u, tb2=%u, n=%u\n", threads, blocks, threads*blocks*2, n);
-
-			ret = clEnqueueNDRangeKernel(command_queue, getResults, 1, NULL, global_size, local_size, 0, NULL, NULL);
+			printf("countBlackouts nn=%llu, chunkSize=%llu, numChunks=%llu, chunkIndex=%llu, chunkStart=%llu, chunkEnd=%llu, stage1=%llu, threads=%u, blocks=%u, tb2=%u, n=%llu\n", nn, chunkSize, numChunks, chunkIndex, chunkStart, chunkEnd, stage1, threads, blocks, threads*blocks * 2, n);
+			printf("countBlackouts(GS=%zd, LS=%zd)\n", global_size[0], local_size[0]);
+			ret = clEnqueueNDRangeKernel(command_queue, countBlackouts, 1, NULL, global_size, local_size, 0, NULL, NULL);
+			printf("Done\n\n");
 			if (ret != CL_SUCCESS) {
 				printf("ERROR!!! %d\n", ret);
-				exit(-1);
 			}
 
 			if (firstPass) {
+				//exit(-1);
 				firstPass = 0;
-				ret = clSetKernelArg(getResults, 10, sizeof(cl_uint), &firstPass);
+				ret = clSetKernelArg(countBlackouts, 10, sizeof(cl_uint), &firstPass);
 				k = -1;
+				//exit(-1);
 			}
 			n = (n + (threads * 2 - 1)) / (threads * 2);
 			k++;
@@ -391,7 +396,7 @@ int main(void) {
 		abod += temp.abod;
 		pbon += temp.pbon;
 		pbod += temp.pbod;
-		printf("CHUNK #%llud of %llud: abon=%llud, abod=%llud, abo=%3.5f, pbon=%llud, pbod=%llud, pbo=%3.f\n", chunkIndex, numChunks, abon, abod, (double)abon/(double)abod, pbon, pbod, (double)pbon/(double)pbod);
+		printf("CHUNK #%llu of %llu: abon=%llu, abod=%llu, abo=%3.5f, pbon=%llu, pbod=%llu, pbo=%3.5f\n", chunkIndex+1, numChunks, abon, abod, 100.0*(double)abon/(double)abod, pbon, pbod, 100.0*(double)pbon/(double)pbod);
 
 		chunkStart = chunkEnd;
 		chunkEnd = nn < (chunkStart + chunkSize) ? nn : (chunkStart + chunkSize);
