@@ -1,7 +1,7 @@
 #define CARDINALITY (11)
 #define FACTORIAL (39916800)
-#define TRI_ROOT(X) ((floorSqrt((8*(X))+1)-1)>>1)
-#define TRI_NUM(X) (((X)*((X)+1))>>1) 
+#define TRI_ROOT(X) ((floorSqrt((8L*((ulong)(X)))+1L)-1L)>>1)
+#define TRI_NUM(X) ((((ulong)(X))*(((ulong)(X))+1L))>>1)
 
 typedef struct Results {
 	ulong total;
@@ -342,15 +342,15 @@ kernel void writeChoices(const AytoData_t a, const uint n, global uchar* ac, glo
 	}	
 }
 
-int isBlackout(const AytoData_t* a, global uchar* x, global uchar* y) {	
+int isBlackout(const AytoData_t a, global uchar* x, global uchar* y) {	
 	int bo = 1;
 	int i,j,z;
 	
 	for(i=0; i<CARDINALITY; i++) {
 		if(x[i] == y[i]) {
 			z = 0;
-			for(j=0; j<(*a).matchesLength; j++) {
-				if((*a).leftMatches[j] == i) {
+			for(j=0; j<a.matchesLength; j++) {
+				if(a.leftMatches[j] == i) {
 					z = 1;
 					break;
 				}
@@ -385,9 +385,27 @@ kernel void countBlackouts(
 	const size_t local_id = get_local_id(0);
 	const size_t local_size = get_local_size(0);
 	const size_t group_id = get_group_id(0);
+	const size_t num_groups = get_global_size(0);
 	unsigned int i = group_id*(local_size*2) + local_id;
 	ulong ii = i + chunkStart;
 	ulong nn = n + chunkStart;
+	unsigned int j,z;
+	
+	if(global_id == 0) {
+		printf("firstpass=%u\n", firstPass);
+		printf("aci=%u\n", aci);
+		printf("pci=%u\n", pci);
+		printf("chunkstart=%llu\n", chunkStart);
+		printf("n=%llu\n", n);
+		printf("stage1=%llu\n", stage1);
+		printf("ac=%u\n", &ac[0]);
+		printf("pc=%u\n", &pc[0]);
+		printf("a.matchesLength=%u\n", a.matchesLength);
+		for(i=0;i<CARDINALITY;i++){
+			printf("%u ",ac[i]);
+		}
+		printf("\n");
+	}
 	
 	if(firstPass) {
 
@@ -395,7 +413,7 @@ kernel void countBlackouts(
 		//if (i + local_size < n) 
 		//	local_array[local_id] += 1;
 		
-		if(i < n) {			
+		/*if(i < n) {			
 			local_array[local_id].pbon = 1;
 			local_array[local_id].pbod = 1;
 			local_array[local_id].abon = 1;
@@ -412,9 +430,11 @@ kernel void countBlackouts(
 			local_array[local_id].pbod += 1;
 			local_array[local_id].abon += 1;
 			local_array[local_id].abod += 1;
-		}
+		}*/
 		
-		/*ulong x1,y1, x2,y2;
+
+		
+		uint x1,y1, x2,y2;
 		global uchar* ax1;
 		global uchar* ay1;
 		global uchar* ax2;
@@ -429,10 +449,13 @@ kernel void countBlackouts(
 			x1++;
 			ax1 = &ac[x1 * CARDINALITY];
 			ay1 = &ac[y1 * CARDINALITY];
+			//if (x1>=aci || y1 >= aci) {
+				//printf("(%u, %u)\n\n\n\n", x1, y1);
+		//}
 		} else {
 			isStage1_1 = 0;
 			ax1 = &ac[((ii - stage1) % aci) * CARDINALITY];
-			ay1 = &pc[((ii - stage1) / aci) * CARDINALITY];	
+			ay1 = &pc[((ii - stage1) / aci) * CARDINALITY];
 		}
 		
 		if((ii + local_size) < stage1) {
@@ -442,6 +465,9 @@ kernel void countBlackouts(
 			x2++;
 			ax2 = &ac[x2 * CARDINALITY];
 			ay2 = &ac[y2 * CARDINALITY];
+			//if (x2>=aci || y2 >= aci) {
+			//	printf("(%u, %u)\n\n\n\n", x2, y2);
+		//}
 		} else {
 			isStage1_2 = 0;
 			ax2 = &ac[(((ii + local_size) - stage1) % aci) * CARDINALITY];
@@ -449,15 +475,34 @@ kernel void countBlackouts(
 		}
 		
 		if(i < n) {
-			temp = isBlackout(&a, ax1, ay1) << isStage1_1;
+			//temp = isBlackout(a, ax1, ay1) << isStage1_1;
+			//if (temp <0 || temp > 2|| isStage1_1 < 0 || isStage1_1 > 1) {
+			//	printf("(temp == %u)\n",temp);
+			//}
 			
+			temp = 1;			
+			for(i=0; i<CARDINALITY; i++) {
+				if(0==0) {
+					z = 0;
+					for(j=0; j<a.matchesLength; j++) {
+						if(a.leftMatches[j] == i) {
+							z = 1;
+							break;
+						}
+					}
+					if(z == 0) {
+						//temp = 0;
+						//break;
+					}
+				}
+			}
+			
+
+
 			local_array[local_id].pbon = temp;
 			local_array[local_id].pbod = 1 << isStage1_1;
-			
-			if(isStage1_1) {
-				local_array[local_id].abon = temp;
-				local_array[local_id].abod = 2; //1 << isStage1_1;
-			}
+			local_array[local_id].abon = (isStage1_1 ? temp : 0);
+			local_array[local_id].abod = (isStage1_1 ? 2    : 0);
 		} else {
 			local_array[local_id].pbon = 0;
 			local_array[local_id].pbod = 0;
@@ -466,16 +511,33 @@ kernel void countBlackouts(
 		}
 		
 		if(i + local_size < n) {
-			temp = isBlackout(&a, ax2, ay2) << isStage1_2;
+			//temp = isBlackout(a, ax2, ay2) << isStage1_2;
+			//if (temp <0 || temp > 2 || isStage1_2 < 0 || isStage1_2 > 1) {
+			//	printf("(temp == %u)\n",temp);
+			//}
+			
+			temp = 1;
+			/*for(i=0; i<CARDINALITY; i++) {
+				if(ac[i] == ac[i]) {
+					z = 0;
+					for(j=0; j<a.matchesLength; j++) {
+						if(a.leftMatches[j] == i) {
+							z = 1;
+							break;
+						}
+					}
+					if(z == 0) {
+						temp = 0;
+						break;
+					}
+				}
+			}*/
 			
 			local_array[local_id].pbon += temp;
 			local_array[local_id].pbod += 1 << isStage1_2;
-			
-			if(isStage1_2) {
-				local_array[local_id].abon += temp;
-				local_array[local_id].abod += 2; //1 << isStage1_2;
-			}
-		}*/
+			local_array[local_id].abon += (isStage1_2 ? temp : 0);
+			local_array[local_id].abod += (isStage1_2 ? 2    : 0);
+		}
 		
 	} else { // Not first pass
 	
@@ -502,6 +564,7 @@ kernel void countBlackouts(
 	
 	barrier(CLK_LOCAL_MEM_FENCE); 
 	
+	
 	/*if(global_id == 0) {
 		for(i = 0; i < local_size; i++) {
 			printf("%d,", local_array[i]);	
@@ -521,8 +584,6 @@ kernel void countBlackouts(
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
-
-	
 	
 	/*barrier(CLK_LOCAL_MEM_FENCE);
 	
@@ -541,7 +602,18 @@ kernel void countBlackouts(
 		output[group_id].abod = local_array [local_id].abod;
 		output[group_id].pbon = local_array [local_id].pbon;
 		output[group_id].pbod = local_array [local_id].pbod;
+		
+
 		//printf("a.nonmatchesLength=%d\n", local_array [local_id]);
+		/*if(firstPass) {
+			if(global_id ==0 || local_array [local_id].abon >  4096 || local_array [local_id].abod > 4096 || local_array [local_id].pbon > 4096 || local_array [local_id].pbod > 4096) {
+				printf("ZOMFG!!! %llu, %llu, %llu, %llu\n",local_array [local_id].abon,local_array [local_id].abod,local_array [local_id].pbon,local_array [local_id].pbod);
+			}
+		} else {
+			//if(num_groups == 15625216 || 1==1 || (local_array [local_id].abon >  4096*2048 || local_array [local_id].abod >= 0 || local_array [local_id].pbon > 4096*2048 || local_array [local_id].pbod > 4096*2048)) {
+				printf("ZOMFG2!!! %llu, %llu, %llu, %llu\n",local_array [local_id].abon,local_array [local_id].abod,local_array [local_id].pbon,local_array [local_id].pbod);
+		//}
+		}*/
 	}
 	
 
