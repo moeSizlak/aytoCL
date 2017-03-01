@@ -407,6 +407,8 @@ kernel void countBlackouts(
 		printf("\n");
 	}
 	
+	
+	
 	if(firstPass) {
 
 		//local_array[local_id] = (i < n) ? 1 : 0;
@@ -480,19 +482,26 @@ kernel void countBlackouts(
 			//	printf("(temp == %u)\n",temp);
 			//}
 			
+			if(a.matchesLength != 0) {
+				printf("KKKKKKKJJJJJJJJJJJ\n\n\n\n\n");
+			}
+			
 			temp = 1;			
 			for(i=0; i<CARDINALITY; i++) {
-				if(0==0) {
+				if(0 == 0) {
 					z = 0;
+					//printf("KKKKKKKKKKKKKKKKK=%u\n\n\n\n", a.matchesLength);
+
 					for(j=0; j<a.matchesLength; j++) {
+						printf("HHHHHHHHHHHHHHHHHHHHHHH\n\n\n\n");
 						if(a.leftMatches[j] == i) {
 							z = 1;
 							break;
 						}
 					}
 					if(z == 0) {
-						//temp = 0;
-						//break;
+						temp = 0;
+						break;
 					}
 				}
 			}
