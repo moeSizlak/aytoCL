@@ -3,14 +3,6 @@
 #define TRI_ROOT(X) ((floorSqrt((8L*((ulong)(X)))+1L)-1L)>>1)
 #define TRI_NUM(X) ((((ulong)(X))*(((ulong)(X))+1L))>>1)
 
-typedef struct Results {
-	ulong total;
-	ulong results[CARDINALITY][CARDINALITY];
-	ulong bo_numerator;
-	ulong bo_denominator;
-} Results_t;
-
-
 typedef struct AytoData {
 	uchar leftMatches[CARDINALITY*2];
 	uchar rightMatches[CARDINALITY*2];
@@ -18,10 +10,10 @@ typedef struct AytoData {
 	
 	uchar leftNonmatches[CARDINALITY*2];
 	uchar rightNonmatches[CARDINALITY*2];
-	uchar nonmatchesLength;
+	uchar nonmatchesLength;	
 	
-	uchar leftBoNonmatches[CARDINALITY*2*CARDINALITY];
-	uchar rightBoNonmatches[CARDINALITY*2*CARDINALITY];
+	uchar leftBoNonmatches[CARDINALITY*2*CARDINALITY]; 
+	uchar rightBoNonmatches[CARDINALITY*2*CARDINALITY]; 
 	uchar boNonmatchesLength;
 	
 	uchar lights[CARDINALITY*2];
@@ -49,36 +41,58 @@ void atomInc64 (__global uint *counter)
 
 // Returns floor of square root of x         
 ulong floorSqrt(ulong x) 
-{    
-    // Base cases
-    if (x == 0 || x == 1) 
-       return x;
- 
-    // Do Binary Search for floor(sqrt(x))
-    ulong start = 1, end = x, ans;   
-    while (start <= end) 
-    {        
-        ulong mid = (start + end) >> 1;
- 
-        // If x is a perfect square
-        if (mid*mid == x)
-            return mid;
- 
-        // Since we need floor, we update answer when mid*mid is 
-        // smaller than x, and move closer to sqrt(x)
-        if (mid*mid < x) 
-        {
-            start = mid + 1;
-            ans = mid;
-        } 
-        else // If mid*mid is greater than x
-            end = mid - 1;        
-    }
-    return ans;
-}
-
-int isValid(const AytoData_t* a, uint m)
 {
+  ulong   squaredbit, remainder, root;
+
+   if (x<1) return 0;
+  
+   /* Load the binary constant 01 00 00 ... 00, where the number
+    * of zero bits to the right of the single one bit
+    * is even, and the one bit is as far left as is consistant
+    * with that condition.)
+    */
+   squaredbit  = (ulong) ((((ulong) ~0L) >> 1) & 
+                        ~(((ulong) ~0L) >> 2));
+   /* This portable load replaces the loop that used to be 
+    * here, and was donated by  legalize@xmission.com 
+    */
+
+   /* Form bits of the answer. */
+   remainder = x;  root = 0;
+   while (squaredbit > 0) {
+     if (remainder >= (squaredbit | root)) {
+         remainder -= (squaredbit | root);
+         root >>= 1; root |= squaredbit;
+     } else {
+         root >>= 1;
+     }
+     squaredbit >>= 2; 
+   }
+
+   return root;
+} 
+
+
+
+int isValid(
+	AytoData_t* a, 
+	uint m,
+	__constant uchar* leftMatches,
+	__constant uchar* rightMatches,
+	uchar matchesLength,
+		
+	__constant uchar* leftNonmatches,
+	__constant uchar* rightNonmatches,
+	uchar nonmatchesLength,	
+		
+	__constant uchar* leftBoNonmatches,
+	__constant uchar* rightBoNonmatches, 
+	uchar boNonmatchesLength,
+		
+	__constant uchar* lights,
+	__constant uchar* ceremonies,
+	uchar ceremoniesLength
+) {
 	uchar permuted[CARDINALITY];
 	uchar elements[CARDINALITY];
 	
@@ -102,8 +116,8 @@ int isValid(const AytoData_t* a, uint m)
 	while (1) {
 		valid = 1;
 		
-		for(i = 0; i < (*a).matchesLength; i++) {
-			if(permuted[(*a).leftMatches[i]] != (*a).rightMatches[i]) {
+		for(i = 0; i < matchesLength; i++) {
+			if(permuted[leftMatches[i]] != rightMatches[i]) {
 				valid = 0;
 				break;
 			}
@@ -113,8 +127,8 @@ int isValid(const AytoData_t* a, uint m)
 			break;
 		}
 		
-		for(i = 0; i < (*a).nonmatchesLength; i++) {
-			if(permuted[(*a).leftNonmatches[i]] == (*a).rightNonmatches[i]) {
+		for(i = 0; i < nonmatchesLength; i++) {
+			if(permuted[leftNonmatches[i]] == rightNonmatches[i]) {
 				valid = 0;
 				break;
 			}
@@ -124,15 +138,15 @@ int isValid(const AytoData_t* a, uint m)
 			break;
 		}
 		
-		for(i = 0; i < (*a).ceremoniesLength; i++) {
+		for(i = 0; i < ceremoniesLength; i++) {
 			correct = 0;
 			for(j = 0; j < CARDINALITY; j++) {
-				if(permuted[j] == (*a).ceremonies[i * CARDINALITY + j]) {
+				if(permuted[j] == ceremonies[i * CARDINALITY + j]) {
 					correct += 1;
 				}
 			}
 			
-			if(correct != (*a).lights[i]) {
+			if(correct != lights[i]) {
 				valid = 0;
 				break;
 			}
@@ -144,8 +158,30 @@ int isValid(const AytoData_t* a, uint m)
 	return valid;
 }
 
-int isValidPerceived(const AytoData_t* a, uint m, local uchar* lac, local uchar* lpc, local uint* laci, local uint* lpci)
-{
+int isValidPerceived(
+	AytoData_t* a, 
+	uint m, 
+	__local uchar* lac, 
+	__local uchar* lpc, 
+	__local uint* laci, 
+	__local uint* lpci,
+	__constant uchar* leftMatches,
+	__constant uchar* rightMatches,
+	uchar matchesLength,
+		
+	__constant uchar* leftNonmatches,
+	__constant uchar* rightNonmatches,
+	uchar nonmatchesLength,	
+		
+	__constant uchar* leftBoNonmatches,
+	__constant uchar* rightBoNonmatches, 
+	uchar boNonmatchesLength,
+		
+	__constant uchar* lights,
+	__constant uchar* ceremonies,
+	uchar ceremoniesLength
+
+) {
 	uchar permuted[CARDINALITY];
 	uchar elements[CARDINALITY];
 	
@@ -170,8 +206,8 @@ int isValidPerceived(const AytoData_t* a, uint m, local uchar* lac, local uchar*
 	while (1) {
 		valid = 1;
 		
-		for(i = 0; i < (*a).matchesLength; i++) {
-			if(permuted[(*a).leftMatches[i]] != (*a).rightMatches[i]) {
+		for(i = 0; i < matchesLength; i++) {
+			if(permuted[leftMatches[i]] != rightMatches[i]) {
 				valid = 0;
 				break;
 			}
@@ -181,8 +217,8 @@ int isValidPerceived(const AytoData_t* a, uint m, local uchar* lac, local uchar*
 			break;
 		}
 		
-		for(i = 0; i < (*a).nonmatchesLength; i++) {
-			if(permuted[(*a).leftNonmatches[i]] == (*a).rightNonmatches[i]) {
+		for(i = 0; i < nonmatchesLength; i++) {
+			if(permuted[leftNonmatches[i]] == rightNonmatches[i]) {
 				valid = 0;
 				break;
 			}
@@ -192,18 +228,18 @@ int isValidPerceived(const AytoData_t* a, uint m, local uchar* lac, local uchar*
 			break;
 		}
 		
-		for(i = 0; i < (*a).ceremoniesLength; i++) {
+		for(i = 0; i < ceremoniesLength; i++) {
 			correct = 0;
 			for(j = 0; j < CARDINALITY; j++) {
-				if(permuted[j] == (*a).ceremonies[i * CARDINALITY + j]) {
+				if(permuted[j] == ceremonies[i * CARDINALITY + j]) {
 					correct += 1;
 				}
 			}
 			
-			if(correct != (*a).lights[i]) {
+			if(correct != lights[i]) {
 				valid = 2;
-				for(i = 0; i < (*a).boNonmatchesLength; i++) {
-					if(permuted[(*a).leftBoNonmatches[i]] == (*a).rightBoNonmatches[i]) {
+				for(i = 0; i < boNonmatchesLength; i++) {
+					if(permuted[leftBoNonmatches[i]] == rightBoNonmatches[i]) {
 						valid = 0;
 						break;
 					}
@@ -233,12 +269,36 @@ int isValidPerceived(const AytoData_t* a, uint m, local uchar* lac, local uchar*
 }
 
 
-kernel void getResults(const AytoData_t a, const uint n, global uint* input, global uint* output, local uint* local_array, const uint firstPass) {
+kernel void getResults(
+	AytoData_t a, 
+	uint n, 
+	__global uint* input, 
+	__global uint* output, 
+	__local uint* local_array, 
+	uint firstPass,
 	
-    const size_t global_id = get_global_id(0);
-	const size_t local_id = get_local_id(0);
-	const size_t local_size = get_local_size(0);
-	const size_t group_id = get_group_id(0); 
+	__constant uchar* leftMatches,
+	__constant uchar* rightMatches,
+	uchar matchesLength,
+		
+	__constant uchar* leftNonmatches,
+	__constant uchar* rightNonmatches,
+	uchar nonmatchesLength,	
+		
+	__constant uchar* leftBoNonmatches,
+	__constant uchar* rightBoNonmatches, 
+	uchar boNonmatchesLength,
+		
+	__constant uchar* lights,
+	__constant uchar* ceremonies,
+	uchar ceremoniesLength
+
+) {
+	
+    size_t global_id = get_global_id(0);
+	size_t local_id = get_local_id(0);
+	size_t local_size = get_local_size(0);
+	size_t group_id = get_group_id(0); 
 	unsigned int i = group_id*(local_size*2) + local_id;
 		
 	
@@ -248,9 +308,9 @@ kernel void getResults(const AytoData_t a, const uint n, global uint* input, glo
 		if (i + local_size < n) 
 			local_array[local_id] += 1;*/
 		
-		local_array[local_id] = (i < n) ? isValid(&a,i) : 0;
+		local_array[local_id] = (i < n) ? isValid(&a,i, leftMatches,rightMatches,matchesLength,	leftNonmatches,rightNonmatches,nonmatchesLength,leftBoNonmatches,rightBoNonmatches, boNonmatchesLength,lights,ceremonies,ceremoniesLength) : 0;
 		if (i + local_size < n) 
-			local_array[local_id] += isValid(&a,i+local_size);
+			local_array[local_id] += isValid(&a,i+local_size, leftMatches,rightMatches,matchesLength,	leftNonmatches,rightNonmatches,nonmatchesLength,leftBoNonmatches,rightBoNonmatches, boNonmatchesLength,lights,ceremonies,ceremoniesLength);
 	
 		
 	} else {
@@ -301,13 +361,39 @@ kernel void getResults(const AytoData_t a, const uint n, global uint* input, glo
 }
 
 
-kernel void writeChoices(const AytoData_t a, const uint n, global uchar* ac, global uchar* pc, local uchar* lac, local uchar* lpc, global uint* aci, global uint* pci, const uint workPerThread) {
+kernel void writeChoices(
+	AytoData_t a, 
+	uint n, 
+	__global uchar* ac, 
+	__global uchar* pc, 
+	__local uchar* lac, 
+	__local uchar* lpc, 
+	__global uint* aci, 
+	__global uint* pci, 
+	uint workPerThread,
 	
-    const size_t global_id = get_global_id(0);
-	const size_t local_id = get_local_id(0);
+	__constant uchar* leftMatches,
+	__constant uchar* rightMatches,
+	uchar matchesLength,
+		
+	__constant uchar* leftNonmatches,
+	__constant uchar* rightNonmatches,
+	uchar nonmatchesLength,	
+		
+	__constant uchar* leftBoNonmatches,
+	__constant uchar* rightBoNonmatches, 
+	uchar boNonmatchesLength,
+		
+	__constant uchar* lights,
+	__constant uchar* ceremonies,
+	uchar ceremoniesLength
+) {
 	
-	local uint laci;
-	local uint lpci;
+    size_t global_id = get_global_id(0);
+	size_t local_id = get_local_id(0);
+	
+	__local uint laci;
+	__local uint lpci;
 	
 	uint temp;
 	int i, j;
@@ -322,7 +408,7 @@ kernel void writeChoices(const AytoData_t a, const uint n, global uchar* ac, glo
 	int pmax = p + workPerThread;
 	
 	while(p < pmax && p < n) {
-		isValidPerceived(&a, p, lac, lpc, &laci, &lpci);	
+		isValidPerceived(&a, p, lac, lpc, &laci, &lpci, leftMatches,rightMatches,matchesLength,	leftNonmatches,rightNonmatches,nonmatchesLength,leftBoNonmatches,rightBoNonmatches, boNonmatchesLength,lights,ceremonies,ceremoniesLength);	
 		++p;
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
@@ -342,15 +428,36 @@ kernel void writeChoices(const AytoData_t a, const uint n, global uchar* ac, glo
 	}	
 }
 
-int isBlackout(const AytoData_t a, global uchar* x, global uchar* y) {	
+int isBlackout(
+	AytoData_t a, 
+	__global uchar* x, 
+	__global uchar* y,
+	
+	__constant uchar* leftMatches,
+	__constant uchar* rightMatches,
+	uchar matchesLength,
+		
+	__constant uchar* leftNonmatches,
+	__constant uchar* rightNonmatches,
+	uchar nonmatchesLength,	
+		
+	__constant uchar* leftBoNonmatches,
+	__constant uchar* rightBoNonmatches, 
+	uchar boNonmatchesLength,
+		
+	__constant uchar* lights,
+	__constant uchar* ceremonies,
+	uchar ceremoniesLength
+
+) {	
 	int bo = 1;
 	int i,j,z;
 	
 	for(i=0; i<CARDINALITY; i++) {
 		if(x[i] == y[i]) {
 			z = 0;
-			for(j=0; j<a.matchesLength; j++) {
-				if(a.leftMatches[j] == i) {
+			for(j=0; j<matchesLength; j++) {
+				if(leftMatches[j] == i) {
 					z = 1;
 					break;
 				}
@@ -368,30 +475,49 @@ int isBlackout(const AytoData_t a, global uchar* x, global uchar* y) {
 
 
 kernel void countBlackouts(
-	const AytoData_t a,   					//0
-	const ulong chunkStart, 				//1
-	const ulong n, 							//2
-	global uchar* ac, 						//3
-	global uchar* pc, 						//4
-	const uint aci, 						//5
-	const uint pci, 						//6
-	global BlackoutData_t* input, 			//7
-	global BlackoutData_t* output, 			//8
-	local BlackoutData_t* local_array,		//9
-	const uint firstPass,					//10
-	const ulong stage1) {					//11
+	AytoData_t a,   					//0
+	ulong chunkStart, 				//1
+	ulong n, 							//2
+	__global uchar* ac, 						//3
+	__global uchar* pc, 						//4
+	uint aci, 						//5
+	uint pci, 						//6
+	__global BlackoutData_t* input, 			//7
+	__global BlackoutData_t* output, 			//8
+	__local BlackoutData_t* local_array,		//9
+	uint firstPass,					//10
+	ulong stage1,						//11
 	
-	const size_t global_id = get_global_id(0);
-	const size_t local_id = get_local_id(0);
-	const size_t local_size = get_local_size(0);
-	const size_t group_id = get_group_id(0);
-	const size_t num_groups = get_global_size(0);
+	__constant uchar* leftMatches,
+	__constant uchar* rightMatches,
+	uchar matchesLength,
+		
+	__constant uchar* leftNonmatches,
+	__constant uchar* rightNonmatches,
+	uchar nonmatchesLength,	
+		
+	__constant uchar* leftBoNonmatches,
+	__constant uchar* rightBoNonmatches, 
+	uchar boNonmatchesLength,
+		
+	__constant uchar* lights,
+	__constant uchar* ceremonies,
+	uchar ceremoniesLength
+	
+) {	
+	
+	size_t global_id = get_global_id(0);
+	size_t local_id = get_local_id(0);
+	size_t local_size = get_local_size(0);
+	size_t group_id = get_group_id(0);
+	size_t num_groups = get_global_size(0);
+	
 	unsigned int i = group_id*(local_size*2) + local_id;
 	ulong ii = i + chunkStart;
 	ulong nn = n + chunkStart;
-	unsigned int j,z;
+	unsigned int j,z,k;
 	
-	if(global_id == 0) {
+	/*if(global_id == 0) {
 		printf("firstpass=%u\n", firstPass);
 		printf("aci=%u\n", aci);
 		printf("pci=%u\n", pci);
@@ -400,12 +526,13 @@ kernel void countBlackouts(
 		printf("stage1=%llu\n", stage1);
 		printf("ac=%u\n", &ac[0]);
 		printf("pc=%u\n", &pc[0]);
-		printf("a.matchesLength=%u\n", a.matchesLength);
+		printf("debug=%u\n",floorSqrt(4614184185L));//4614184185L));
+		printf("matchesLength=%u\n", matchesLength);
 		for(i=0;i<CARDINALITY;i++){
 			printf("%u ",ac[i]);
 		}
 		printf("\n");
-	}
+	}*/
 	
 	
 	
@@ -437,10 +564,11 @@ kernel void countBlackouts(
 
 		
 		uint x1,y1, x2,y2;
-		global uchar* ax1;
-		global uchar* ay1;
-		global uchar* ax2;
-		global uchar* ay2;
+		uint x1i, x2i, y1i, y2i;
+		__global uchar* ax1;
+		__global uchar* ay1;
+		__global uchar* ax2;
+		__global uchar* ay2;
 		uint isStage1_1, isStage1_2;
 		uint temp;
 		
@@ -449,15 +577,24 @@ kernel void countBlackouts(
 			x1 = TRI_ROOT(ii);
 			y1 = ii - TRI_NUM(x1);
 			x1++;
-			ax1 = &ac[x1 * CARDINALITY];
-			ay1 = &ac[y1 * CARDINALITY];
+			x1i = x1 * CARDINALITY;
+			y1i = y1 * CARDINALITY;
+			ax1 = &ac[x1i];
+			ay1 = &ac[y1i];
+			
 			//if (x1>=aci || y1 >= aci) {
-				//printf("(%u, %u)\n\n\n\n", x1, y1);
-		//}
+			//	printf("[a]%llu -> (%u, %u)\n\n\n\n", ii, x1, y1);
+			//}
 		} else {
 			isStage1_1 = 0;
-			ax1 = &ac[((ii - stage1) % aci) * CARDINALITY];
-			ay1 = &pc[((ii - stage1) / aci) * CARDINALITY];
+			x1i = ((ii - stage1) % aci) * CARDINALITY;
+			y1i = ((ii - stage1) / aci) * CARDINALITY;
+			ax1 = &ac[x1i];
+			ay1 = &pc[y1i];
+			
+			//if (x1>=aci || y1 >= pci) {
+			//	printf("[b]%llu -> (%u, %u)\n\n\n\n", ii, x1, y1);
+			//}
 		}
 		
 		if((ii + local_size) < stage1) {
@@ -465,15 +602,24 @@ kernel void countBlackouts(
 			x2 = TRI_ROOT(ii + local_size);
 			y2 = (ii + local_size) - TRI_NUM(x2);
 			x2++;
-			ax2 = &ac[x2 * CARDINALITY];
-			ay2 = &ac[y2 * CARDINALITY];
+			x2i = x2 * CARDINALITY;
+			y2i = y2 * CARDINALITY;
+			ax2 = &ac[x2i];
+			ay2 = &ac[y2i];
+			
 			//if (x2>=aci || y2 >= aci) {
-			//	printf("(%u, %u)\n\n\n\n", x2, y2);
-		//}
+			//	printf("[c]%llu -> (%u, %u)\n\n\n\n", ii, x2, y2);
+			//}
 		} else {
 			isStage1_2 = 0;
-			ax2 = &ac[(((ii + local_size) - stage1) % aci) * CARDINALITY];
-			ay2 = &pc[(((ii + local_size) - stage1) / aci) * CARDINALITY];	
+			x2i = (((ii + local_size) - stage1) % aci) * CARDINALITY;
+			y2i = (((ii + local_size) - stage1) / aci) * CARDINALITY;
+			ax2 = &ac[x2i];
+			ay2 = &pc[y2i];
+			
+			//if (x2>=aci || y2 >= pci) {
+			//	printf("[d]%llu -> (%u, %u)\n\n\n\n", ii, x2, y2);
+			//}
 		}
 		
 		if(i < n) {
@@ -482,19 +628,12 @@ kernel void countBlackouts(
 			//	printf("(temp == %u)\n",temp);
 			//}
 			
-			if(a.matchesLength != 0) {
-				printf("KKKKKKKJJJJJJJJJJJ\n\n\n\n\n");
-			}
-			
-			temp = 1;			
+			temp = 1 << isStage1_1;
 			for(i=0; i<CARDINALITY; i++) {
-				if(0 == 0) {
+				if(ax1[i] == ay1[i]) {
 					z = 0;
-					//printf("KKKKKKKKKKKKKKKKK=%u\n\n\n\n", a.matchesLength);
-
-					for(j=0; j<a.matchesLength; j++) {
-						printf("HHHHHHHHHHHHHHHHHHHHHHH\n\n\n\n");
-						if(a.leftMatches[j] == i) {
+					for(j=0; j<matchesLength; j++) {
+						if(leftMatches[j] == i) {
 							z = 1;
 							break;
 						}
@@ -525,12 +664,12 @@ kernel void countBlackouts(
 			//	printf("(temp == %u)\n",temp);
 			//}
 			
-			temp = 1;
-			/*for(i=0; i<CARDINALITY; i++) {
-				if(ac[i] == ac[i]) {
+			temp = 1 << isStage1_2;
+			for(i=0; i<CARDINALITY; i++) {
+				if(ax2[i] == ay2[i]) {
 					z = 0;
-					for(j=0; j<a.matchesLength; j++) {
-						if(a.leftMatches[j] == i) {
+					for(j=0; j<matchesLength; j++) {
+						if(leftMatches[j] == i) {
 							z = 1;
 							break;
 						}
@@ -540,7 +679,7 @@ kernel void countBlackouts(
 						break;
 					}
 				}
-			}*/
+			}
 			
 			local_array[local_id].pbon += temp;
 			local_array[local_id].pbod += 1 << isStage1_2;
@@ -572,16 +711,7 @@ kernel void countBlackouts(
 	}
 	
 	barrier(CLK_LOCAL_MEM_FENCE); 
-	
-	
-	/*if(global_id == 0) {
-		for(i = 0; i < local_size; i++) {
-			printf("%d,", local_array[i]);	
-		}
-		printf("\n\n");
-	}
-	barrier(CLK_LOCAL_MEM_FENCE);*/
-	
+		
 	for(unsigned int s=local_size/2; s>0; s>>=1) 
     {
         if (local_id < s) 
@@ -594,35 +724,12 @@ kernel void countBlackouts(
         barrier(CLK_LOCAL_MEM_FENCE);
     }
 	
-	/*barrier(CLK_LOCAL_MEM_FENCE);
-	
-	if(global_id == 0) {
-		for(i = 0; i < local_size; i++) {
-			printf("%d,", local_array[i]);	
-		}
-		printf("\n\n");
-	}*/
 	
 	if (local_id == 0) {
-		//if(!(m&32767)) {
-		//printf("fp=%d, global_id=%d, local_array[0]=%d, local_size=%d\n", firstPass, global_id, local_array [local_id], local_size);
-	//}
 		output[group_id].abon = local_array [local_id].abon;
 		output[group_id].abod = local_array [local_id].abod;
 		output[group_id].pbon = local_array [local_id].pbon;
 		output[group_id].pbod = local_array [local_id].pbod;
-		
-
-		//printf("a.nonmatchesLength=%d\n", local_array [local_id]);
-		/*if(firstPass) {
-			if(global_id ==0 || local_array [local_id].abon >  4096 || local_array [local_id].abod > 4096 || local_array [local_id].pbon > 4096 || local_array [local_id].pbod > 4096) {
-				printf("ZOMFG!!! %llu, %llu, %llu, %llu\n",local_array [local_id].abon,local_array [local_id].abod,local_array [local_id].pbon,local_array [local_id].pbod);
-			}
-		} else {
-			//if(num_groups == 15625216 || 1==1 || (local_array [local_id].abon >  4096*2048 || local_array [local_id].abod >= 0 || local_array [local_id].pbon > 4096*2048 || local_array [local_id].pbod > 4096*2048)) {
-				printf("ZOMFG2!!! %llu, %llu, %llu, %llu\n",local_array [local_id].abon,local_array [local_id].abod,local_array [local_id].pbon,local_array [local_id].pbod);
-		//}
-		}*/
 	}
 	
 

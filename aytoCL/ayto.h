@@ -51,21 +51,21 @@ typedef struct Results {
 } Results_t;
 
 typedef struct AytoData {
-	uint8_t leftMatches[CARDINALITY * 2];
-	uint8_t rightMatches[CARDINALITY * 2];
-	uint8_t matchesLength;
+	cl_uchar leftMatches[CARDINALITY * 2];
+	cl_uchar rightMatches[CARDINALITY * 2];
+	cl_uchar matchesLength;
 
-	uint8_t leftNonmatches[CARDINALITY * 2];
-	uint8_t rightNonmatches[CARDINALITY * 2];
-	uint8_t nonmatchesLength;
+	cl_uchar leftNonmatches[CARDINALITY * 2];
+	cl_uchar rightNonmatches[CARDINALITY * 2];
+	cl_uchar nonmatchesLength;
 
-	uint8_t leftBoNonmatches[CARDINALITY * 2 * CARDINALITY];
-	uint8_t rightBoNonmatches[CARDINALITY * 2 * CARDINALITY];
-	uint8_t boNonmatchesLength;
+	cl_uchar leftBoNonmatches[CARDINALITY * 2 * CARDINALITY];
+	cl_uchar rightBoNonmatches[CARDINALITY * 2 * CARDINALITY];
+	cl_uchar boNonmatchesLength;
 
-	uint8_t lights[CARDINALITY * 2];
-	uint8_t ceremonies[CARDINALITY * 2 * CARDINALITY];
-	uint8_t ceremoniesLength;
+	cl_uchar lights[CARDINALITY * 2];
+	cl_uchar ceremonies[CARDINALITY * 2 * CARDINALITY];
+	cl_uchar ceremoniesLength;
 } AytoData_t;
 
 typedef struct Ayto {

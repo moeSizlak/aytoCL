@@ -14,7 +14,7 @@
 #endif
 
 #define MAX_SOURCE_SIZE (0x100000)
-#define EPISODE (0)
+#define EPISODE (-1)
 #define CALC_BO_ODDS (0)
 #define TRI_ROOT(X) ((floorSqrt((8L*((cl_ulong)(X)))+1L)-1L)>>1)
 #define TRI_NUM(X) ((((cl_ulong)(X))*(((cl_ulong)(X))+1L))>>1)
@@ -55,31 +55,35 @@ unsigned int nextPow2(unsigned int x) {
 // Returns floor of square root of x         
 cl_ulong floorSqrt(cl_ulong x)
 {
-	// Base cases
-	if (x == 0 || x == 1)
-		return x;
+	cl_ulong   squaredbit, remainder, root;
 
-	// Do Binary Search for floor(sqrt(x))
-	cl_ulong start = 1, end = x, ans;
-	while (start <= end)
-	{
-		cl_ulong mid = (start + end) >> 1;
+	if (x<1) return 0;
 
-		// If x is a perfect square
-		if (mid*mid == x)
-			return mid;
+	/* Load the binary constant 01 00 00 ... 00, where the number
+	* of zero bits to the right of the single one bit
+	* is even, and the one bit is as far left as is consistant
+	* with that condition.)
+	*/
+	squaredbit = (cl_ulong)((((cl_ulong)~0L) >> 1) &
+		~(((cl_ulong)~0L) >> 2));
+	/* This portable load replaces the loop that used to be
+	* here, and was donated by  legalize@xmission.com
+	*/
 
-		// Since we need floor, we update answer when mid*mid is 
-		// smaller than x, and move closer to sqrt(x)
-		if (mid*mid < x)
-		{
-			start = mid + 1;
-			ans = mid;
+	/* Form bits of the answer. */
+	remainder = x;  root = 0;
+	while (squaredbit > 0) {
+		if (remainder >= (squaredbit | root)) {
+			remainder -= (squaredbit | root);
+			root >>= 1; root |= squaredbit;
 		}
-		else // If mid*mid is greater than x
-			end = mid - 1;
+		else {
+			root >>= 1;
+		}
+		squaredbit >>= 2;
 	}
-	return ans;
+
+	return root;
 }
 
 int main(void) {
@@ -149,6 +153,23 @@ int main(void) {
 
 	computeAytoData(&a, EPISODE);
 
+	cl_mem leftMatches = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(cl_uchar) * CARDINALITY * 2, &a.data.leftMatches, &ret);
+	cl_mem rightMatches = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(cl_uchar) * CARDINALITY * 2, &a.data.rightMatches, &ret);
+	//cl_mem matchesLength = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(cl_uchar), &a.data.matchesLength, &ret);
+	
+	cl_mem leftNonmatches = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(cl_uchar) * CARDINALITY * 2, &a.data.leftNonmatches, &ret);
+	cl_mem rightNonmatches = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(cl_uchar) * CARDINALITY * 2, &a.data.rightNonmatches, &ret);
+	//cl_mem nonmatchesLength = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(cl_uchar), &a.data.nonmatchesLength, &ret);
+	
+	cl_mem leftBoNonmatches = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(cl_uchar) * CARDINALITY * 2 * CARDINALITY, &a.data.leftBoNonmatches, &ret);
+	cl_mem rightBoNonmatches = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(cl_uchar) * CARDINALITY * 2 * CARDINALITY, &a.data.rightBoNonmatches, &ret);
+	//cl_mem boNonmatchesLength = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(cl_uchar), &a.data.boNonmatchesLength, &ret);
+
+	cl_mem lights = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(cl_uchar) * CARDINALITY * 2, &a.data.lights, &ret);
+	cl_mem ceremonies = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(cl_uchar) * CARDINALITY * 2 * CARDINALITY, &a.data.ceremonies, &ret);
+	//cl_mem ceremoniesLength = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(cl_uchar), &a.data.ceremoniesLength, &ret);
+
+
 	cl_int sum = 0;
 	unsigned int maxThreads = 1024;
 	size_t array_size = ((sizeof(cl_uint) * FACTORIAL) + (maxThreads * 2 - 1)) / (maxThreads * 2);
@@ -169,6 +190,19 @@ int main(void) {
 	ret = clSetKernelArg(getResults, 3, sizeof(cl_mem), &output);
 	ret = clSetKernelArg(getResults, 4, sizeof(cl_uint)*maxThreads, NULL);
 	ret = clSetKernelArg(getResults, 5, sizeof(cl_uint), &firstPass);
+
+	ret = clSetKernelArg(getResults, 6, sizeof(cl_mem), &leftMatches);
+	ret = clSetKernelArg(getResults, 7, sizeof(cl_mem), &rightMatches);
+	ret = clSetKernelArg(getResults, 8, sizeof(cl_uchar), &a.data.matchesLength);
+	ret = clSetKernelArg(getResults, 9, sizeof(cl_mem), &leftNonmatches);
+	ret = clSetKernelArg(getResults, 10, sizeof(cl_mem), &rightNonmatches);
+	ret = clSetKernelArg(getResults, 11, sizeof(cl_uchar), &a.data.nonmatchesLength);
+	ret = clSetKernelArg(getResults, 12, sizeof(cl_mem), &leftBoNonmatches);
+	ret = clSetKernelArg(getResults, 13, sizeof(cl_mem), &rightBoNonmatches);
+	ret = clSetKernelArg(getResults, 14, sizeof(cl_uchar), &a.data.boNonmatchesLength);
+	ret = clSetKernelArg(getResults, 15, sizeof(cl_mem), &lights);
+	ret = clSetKernelArg(getResults, 16, sizeof(cl_mem), &ceremonies);
+	ret = clSetKernelArg(getResults, 17, sizeof(cl_uchar), &a.data.ceremoniesLength);
 
 	unsigned int n = FACTORIAL;
 	int k = 1;
@@ -249,6 +283,19 @@ int main(void) {
 	ret = clSetKernelArg(writeChoices, 7, sizeof(cl_mem), &mem_pci);
 	ret = clSetKernelArg(writeChoices, 8, sizeof(cl_uint), &workPerThread);
 
+	ret = clSetKernelArg(writeChoices, 9, sizeof(cl_mem), &leftMatches);
+	ret = clSetKernelArg(writeChoices, 10, sizeof(cl_mem), &rightMatches);
+	ret = clSetKernelArg(writeChoices, 11, sizeof(cl_uchar), &a.data.matchesLength);
+	ret = clSetKernelArg(writeChoices, 12, sizeof(cl_mem), &leftNonmatches);
+	ret = clSetKernelArg(writeChoices, 13, sizeof(cl_mem), &rightNonmatches);
+	ret = clSetKernelArg(writeChoices, 14, sizeof(cl_uchar), &a.data.nonmatchesLength);
+	ret = clSetKernelArg(writeChoices, 15, sizeof(cl_mem), &leftBoNonmatches);
+	ret = clSetKernelArg(writeChoices, 16, sizeof(cl_mem), &rightBoNonmatches);
+	ret = clSetKernelArg(writeChoices, 17, sizeof(cl_uchar), &a.data.boNonmatchesLength);
+	ret = clSetKernelArg(writeChoices, 18, sizeof(cl_mem), &lights);
+	ret = clSetKernelArg(writeChoices, 19, sizeof(cl_mem), &ceremonies);
+	ret = clSetKernelArg(writeChoices, 20, sizeof(cl_uchar), &a.data.ceremoniesLength);
+
 	clFinish(command_queue);
 
 	threads = (n < (maxThreads * workPerThread)) ? (n + workPerThread - 1)/workPerThread : maxThreads;
@@ -316,6 +363,8 @@ int main(void) {
 	}
 	ret = clReleaseKernel(writeChoices);
 
+	//exit(-1);
+
 // ********************************** countBlackouts **************************************************
 	start = clock();
 
@@ -328,7 +377,7 @@ int main(void) {
 	cl_ulong stage1 = TRI_NUM(aci - 1);
 	cl_ulong nn = stage1 + (aci*pci);   //aci*(aci+pci); // (11!)^2
 	maxThreads = 1024;  // 1024
-	cl_ulong max_memory_allocation = 10000000; // 1,000,000,000
+	cl_ulong max_memory_allocation = 1000000; // 1,000,000,000
 	cl_ulong chunkSize = (max_memory_allocation * maxThreads * 2)/(sizeof(BlackoutData_t));  // 64,000,000,000
 	cl_ulong numChunks = (nn + (chunkSize - 1)) / chunkSize; // 24,896
 	array_size = ((sizeof(BlackoutData_t) * chunkSize) + (maxThreads * 2 - 1)) / (maxThreads * 2); // 1,000,000,000
@@ -355,13 +404,27 @@ int main(void) {
 	ret = clSetKernelArg(countBlackouts, 6, sizeof(cl_uint), &pci);
 	ret = clSetKernelArg(countBlackouts, 9, sizeof(BlackoutData_t)*maxThreads, NULL);
 	ret = clSetKernelArg(countBlackouts, 11, sizeof(cl_ulong), &stage1);
+
+	ret = clSetKernelArg(countBlackouts, 12, sizeof(cl_mem), &leftMatches);
+	ret = clSetKernelArg(countBlackouts, 13, sizeof(cl_mem), &rightMatches);
+	ret = clSetKernelArg(countBlackouts, 14, sizeof(cl_uchar), &a.data.matchesLength);
+	ret = clSetKernelArg(countBlackouts, 15, sizeof(cl_mem), &leftNonmatches);
+	ret = clSetKernelArg(countBlackouts, 16, sizeof(cl_mem), &rightNonmatches);
+	ret = clSetKernelArg(countBlackouts, 17, sizeof(cl_uchar), &a.data.nonmatchesLength);
+	ret = clSetKernelArg(countBlackouts, 18, sizeof(cl_mem), &leftBoNonmatches);
+	ret = clSetKernelArg(countBlackouts, 19, sizeof(cl_mem), &rightBoNonmatches);
+	ret = clSetKernelArg(countBlackouts, 20, sizeof(cl_uchar), &a.data.boNonmatchesLength);
+	ret = clSetKernelArg(countBlackouts, 21, sizeof(cl_mem), &lights);
+	ret = clSetKernelArg(countBlackouts, 22, sizeof(cl_mem), &ceremonies);
+	ret = clSetKernelArg(countBlackouts, 23, sizeof(cl_uchar), &a.data.ceremoniesLength);
+
 	
 
 	cl_ulong chunkStart = 0;
 	cl_ulong chunkEnd = nn < chunkSize ? nn : chunkSize;
 	cl_ulong chunkIndex = 0;
 
-	printf("countBlackouts INITIAL as=%u, ls=%d, nn=%llu, chunkSize=%llu, numChunks=%llu, chunkIndex=%llu, chunkStart=%llu, chunkEnd=%llu, stage1=%llu, aci=%u, pci=%u\n", array_size, sizeof(BlackoutData_t)*maxThreads, nn, chunkSize, numChunks, chunkIndex, chunkStart, chunkEnd, stage1, aci, pci);
+	///printf("countBlackouts INITIAL as=%u, ls=%d, nn=%llu, chunkSize=%llu, numChunks=%llu, chunkIndex=%llu, chunkStart=%llu, chunkEnd=%llu, stage1=%llu, aci=%u, pci=%u\n", array_size, sizeof(BlackoutData_t)*maxThreads, nn, chunkSize, numChunks, chunkIndex, chunkStart, chunkEnd, stage1, aci, pci);
 
 	while (chunkIndex < numChunks) {
 		
@@ -386,10 +449,10 @@ int main(void) {
 
 			global_size[0] = threads*blocks;
 			local_size[0] = threads;
-			printf("countBlackouts nn=%llu, chunkSize=%llu, numChunks=%llu, chunkIndex=%llu, chunkStart=%llu, chunkEnd=%llu, stage1=%llu, threads=%llu, blocks=%llu, tb2=%llu, n=%llu\n", nn, chunkSize, numChunks, chunkIndex, chunkStart, chunkEnd, stage1, threads, blocks, threads*blocks * 2, n);
-			printf("countBlackouts(GS=%zd, LS=%zd)\n", global_size[0], local_size[0]);
+			///printf("countBlackouts nn=%llu, chunkSize=%llu, numChunks=%llu, chunkIndex=%llu, chunkStart=%llu, chunkEnd=%llu, stage1=%llu, threads=%llu, blocks=%llu, tb2=%llu, n=%llu\n", nn, chunkSize, numChunks, chunkIndex, chunkStart, chunkEnd, stage1, threads, blocks, threads*blocks * 2, n);
+			///printf("countBlackouts(GS=%zd, LS=%zd)\n", global_size[0], local_size[0]);
 			ret = clEnqueueNDRangeKernel(command_queue, countBlackouts, 1, NULL, global_size, local_size, 0, NULL, NULL);
-			printf("Done\n\n");
+			///printf("Done\n\n");
 			if (ret != CL_SUCCESS) {
 				printf("clEnqueueNDRangeKernel ERROR!!! %d\n", ret);
 				exit(-1);
