@@ -428,50 +428,6 @@ kernel void writeChoices(
 	}	
 }
 
-int isBlackout(
-	AytoData_t a, 
-	__global uchar* x, 
-	__global uchar* y,
-	
-	__constant uchar* leftMatches,
-	__constant uchar* rightMatches,
-	uchar matchesLength,
-		
-	__constant uchar* leftNonmatches,
-	__constant uchar* rightNonmatches,
-	uchar nonmatchesLength,	
-		
-	__constant uchar* leftBoNonmatches,
-	__constant uchar* rightBoNonmatches, 
-	uchar boNonmatchesLength,
-		
-	__constant uchar* lights,
-	__constant uchar* ceremonies,
-	uchar ceremoniesLength
-
-) {	
-	int bo = 1;
-	int i,j,z;
-	
-	for(i=0; i<CARDINALITY; i++) {
-		if(x[i] == y[i]) {
-			z = 0;
-			for(j=0; j<matchesLength; j++) {
-				if(leftMatches[j] == i) {
-					z = 1;
-					break;
-				}
-			}
-			if(z == 0) {
-				bo = 0;
-				break;
-			}
-		}
-	}
-	
-	return bo;
-}
-
 
 
 kernel void countBlackouts(
@@ -504,8 +460,7 @@ kernel void countBlackouts(
 	__constant uchar* ceremonies,
 	uchar ceremoniesLength
 	
-) {	
-	
+) {		
 	size_t global_id = get_global_id(0);
 	size_t local_id = get_local_id(0);
 	size_t local_size = get_local_size(0);
@@ -534,35 +489,7 @@ kernel void countBlackouts(
 		printf("\n");
 	}*/
 	
-	
-	
 	if(firstPass) {
-
-		//local_array[local_id] = (i < n) ? 1 : 0;
-		//if (i + local_size < n) 
-		//	local_array[local_id] += 1;
-		
-		/*if(i < n) {			
-			local_array[local_id].pbon = 1;
-			local_array[local_id].pbod = 1;
-			local_array[local_id].abon = 1;
-			local_array[local_id].abod = 1;
-		} else {
-			local_array[local_id].pbon = 0;
-			local_array[local_id].pbod = 0;
-			local_array[local_id].abon = 0;
-			local_array[local_id].abod = 0;
-		}
-		
-		if(i + local_size < n) {			
-			local_array[local_id].pbon += 1;
-			local_array[local_id].pbod += 1;
-			local_array[local_id].abon += 1;
-			local_array[local_id].abod += 1;
-		}*/
-		
-
-		
 		uint x1,y1, x2,y2;
 		uint x1i, x2i, y1i, y2i;
 		__global uchar* ax1;
@@ -581,20 +508,12 @@ kernel void countBlackouts(
 			y1i = y1 * CARDINALITY;
 			ax1 = &ac[x1i];
 			ay1 = &ac[y1i];
-			
-			//if (x1>=aci || y1 >= aci) {
-			//	printf("[a]%llu -> (%u, %u)\n\n\n\n", ii, x1, y1);
-			//}
 		} else {
 			isStage1_1 = 0;
 			x1i = ((ii - stage1) % aci) * CARDINALITY;
 			y1i = ((ii - stage1) / aci) * CARDINALITY;
 			ax1 = &ac[x1i];
 			ay1 = &pc[y1i];
-			
-			//if (x1>=aci || y1 >= pci) {
-			//	printf("[b]%llu -> (%u, %u)\n\n\n\n", ii, x1, y1);
-			//}
 		}
 		
 		if((ii + local_size) < stage1) {
@@ -606,34 +525,21 @@ kernel void countBlackouts(
 			y2i = y2 * CARDINALITY;
 			ax2 = &ac[x2i];
 			ay2 = &ac[y2i];
-			
-			//if (x2>=aci || y2 >= aci) {
-			//	printf("[c]%llu -> (%u, %u)\n\n\n\n", ii, x2, y2);
-			//}
 		} else {
 			isStage1_2 = 0;
 			x2i = (((ii + local_size) - stage1) % aci) * CARDINALITY;
 			y2i = (((ii + local_size) - stage1) / aci) * CARDINALITY;
 			ax2 = &ac[x2i];
 			ay2 = &pc[y2i];
-			
-			//if (x2>=aci || y2 >= pci) {
-			//	printf("[d]%llu -> (%u, %u)\n\n\n\n", ii, x2, y2);
-			//}
 		}
 		
-		if(i < n) {
-			//temp = isBlackout(a, ax1, ay1) << isStage1_1;
-			//if (temp <0 || temp > 2|| isStage1_1 < 0 || isStage1_1 > 1) {
-			//	printf("(temp == %u)\n",temp);
-			//}
-			
+		if(i < n) {	
 			temp = 1 << isStage1_1;
-			for(i=0; i<CARDINALITY; i++) {
-				if(ax1[i] == ay1[i]) {
+			for(k=0; k<CARDINALITY; k++) {
+				if(ax1[k] == ay1[k]) {
 					z = 0;
 					for(j=0; j<matchesLength; j++) {
-						if(leftMatches[j] == i) {
+						if(leftMatches[j] == k) {
 							z = 1;
 							break;
 						}
@@ -644,8 +550,6 @@ kernel void countBlackouts(
 					}
 				}
 			}
-			
-
 
 			local_array[local_id].pbon = temp;
 			local_array[local_id].pbod = 1 << isStage1_1;
@@ -658,18 +562,13 @@ kernel void countBlackouts(
 			local_array[local_id].abod = 0;
 		}
 		
-		if(i + local_size < n) {
-			//temp = isBlackout(a, ax2, ay2) << isStage1_2;
-			//if (temp <0 || temp > 2 || isStage1_2 < 0 || isStage1_2 > 1) {
-			//	printf("(temp == %u)\n",temp);
-			//}
-			
+		if((i + local_size) < n) {
 			temp = 1 << isStage1_2;
-			for(i=0; i<CARDINALITY; i++) {
-				if(ax2[i] == ay2[i]) {
+			for(k=0; k<CARDINALITY; k++) {
+				if(ax2[k] == ay2[k]) {
 					z = 0;
 					for(j=0; j<matchesLength; j++) {
-						if(leftMatches[j] == i) {
+						if(leftMatches[j] == k) {
 							z = 1;
 							break;
 						}
@@ -701,7 +600,7 @@ kernel void countBlackouts(
 			local_array[local_id].pbod = 0;	
 		}
 		
-		if (i + local_size < n) {
+		if ((i + local_size) < n) {
 			local_array[local_id].abon += input[i+local_size].abon; 
 			local_array[local_id].abod += input[i+local_size].abod;
 			local_array[local_id].pbon += input[i+local_size].pbon;

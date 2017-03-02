@@ -14,7 +14,7 @@
 #endif
 
 #define MAX_SOURCE_SIZE (0x100000)
-#define EPISODE (-1)
+#define EPISODE (4)
 #define CALC_BO_ODDS (0)
 #define TRI_ROOT(X) ((floorSqrt((8L*((cl_ulong)(X)))+1L)-1L)>>1)
 #define TRI_NUM(X) ((((cl_ulong)(X))*(((cl_ulong)(X))+1L))>>1)
@@ -351,6 +351,8 @@ int main(void) {
 		printf("\n");
 	}
 
+	printf("\n\n\n");
+
 	free(ac);
 	free(pc);
 
@@ -375,7 +377,7 @@ int main(void) {
 	BlackoutData_t temp;
 
 	cl_ulong stage1 = TRI_NUM(aci - 1);
-	cl_ulong nn = stage1 + (aci*pci);   //aci*(aci+pci); // (11!)^2
+	cl_ulong nn = stage1 + ((cl_long)aci*(cl_long)pci);   //aci*(aci+pci); // (11!)^2
 	maxThreads = 1024;  // 1024
 	cl_ulong max_memory_allocation = 1000000; // 1,000,000,000
 	cl_ulong chunkSize = (max_memory_allocation * maxThreads * 2)/(sizeof(BlackoutData_t));  // 64,000,000,000
@@ -424,7 +426,7 @@ int main(void) {
 	cl_ulong chunkEnd = nn < chunkSize ? nn : chunkSize;
 	cl_ulong chunkIndex = 0;
 
-	///printf("countBlackouts INITIAL as=%u, ls=%d, nn=%llu, chunkSize=%llu, numChunks=%llu, chunkIndex=%llu, chunkStart=%llu, chunkEnd=%llu, stage1=%llu, aci=%u, pci=%u\n", array_size, sizeof(BlackoutData_t)*maxThreads, nn, chunkSize, numChunks, chunkIndex, chunkStart, chunkEnd, stage1, aci, pci);
+	printf("countBlackouts INITIAL as=%u, ls=%d, nn=%llu, chunkSize=%llu, numChunks=%llu, chunkIndex=%llu, chunkStart=%llu, chunkEnd=%llu, stage1=%llu, aci=%u, pci=%u\n", array_size, sizeof(BlackoutData_t)*maxThreads, nn, chunkSize, numChunks, chunkIndex, chunkStart, chunkEnd, stage1, aci, pci);
 
 	while (chunkIndex < numChunks) {
 		
@@ -479,7 +481,7 @@ int main(void) {
 		abod += temp.abod;
 		pbon += temp.pbon;
 		pbod += temp.pbod;
-		printf("CHUNK #%llu of %llu: abon=%llu, abod=%llu, abo=%3.5f, pbon=%llu, pbod=%llu, pbo=%3.5f\n", chunkIndex+1, numChunks, abon, abod, 100.0*(double)abon/(double)abod, pbon, pbod, 100.0*(double)pbon/(double)pbod);
+		printf("CHUNK #%llu of %llu: abon=%llu, abod=%llu, abo=%3.5f, pbon=%llu, pbod=%llu, pbo=%3.5f\r", chunkIndex+1, numChunks, abon, abod, 100.0*(double)abon/(double)abod, pbon, pbod, 100.0*(double)pbon/(double)pbod);
 
 		chunkStart = chunkEnd;
 		chunkEnd = nn < (chunkStart + chunkSize) ? nn : (chunkStart + chunkSize);
@@ -491,7 +493,8 @@ int main(void) {
 
 	end = clock();
 
-	//printResults(&a, &r);
+	printf("\n\n");
+	printf("FINAL: abon=%llu, abod=%llu, abo=%3.5f, pbon=%llu, pbod=%llu, pbo=%3.5f\n\n", abon, abod, 100.0*(double)abon / (double)abod, pbon, pbod, 100.0*(double)pbon / (double)pbod);
 	printf("Time was: %d ms\n\n", (int)(1000 * (end - start) / CLOCKS_PER_SEC));
 
 	ret = clFlush(command_queue);
